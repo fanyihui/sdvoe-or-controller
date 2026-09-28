@@ -1,0 +1,164 @@
+# 本控制器所属手术室 + SDVoE 设备发现配置
+
+operating_room:
+  id: OR-01
+  name: 1号手术室
+  building: 外科楼
+  floor: 3F
+
+sdvoe:
+  discovery:
+    # inventory | mock | http
+    # 首期默认 inventory：以交付清单为准；联调无硬件时可改为 mock
+    mode: inventory
+    # mode=http 时启用：
+    # manager_base_url: http://10.10.1.5:8088
+
+  # 本手术室 SDVoE 设备交付清单（mode=inventory 时使用）
+  inventory:
+    - id: enc-endo-01
+      name: 腔镜编码器
+      or_id: OR-01
+      role: ENCODER
+      ip: 10.10.1.11
+      mac: "00:0A:1B:10:01:11"
+      model: SDVoE-ENC-4K
+      firmware: 2.4.1
+      location: 吊塔-视频输入柜
+      status: ONLINE
+      signal_present: true
+      stream_id: stream-endo-main
+      tags:
+        source: endoscope
+
+    - id: enc-cam-02
+      name: 术野相机编码器
+      or_id: OR-01
+      role: ENCODER
+      ip: 10.10.1.12
+      mac: "00:0A:1B:10:01:12"
+      model: SDVoE-ENC-4K
+      firmware: 2.4.1
+      location: 吊塔-视频输入柜
+      status: ONLINE
+      signal_present: true
+      stream_id: stream-cam
+      tags:
+        source: surgical_cam
+
+    - id: enc-us-03
+      name: 超声编码器
+      or_id: OR-01
+      role: ENCODER
+      ip: 10.10.1.13
+      mac: "00:0A:1B:10:01:13"
+      model: SDVoE-ENC-HD
+      firmware: 2.3.0
+      location: 设备带-超声侧
+      status: ONLINE
+      signal_present: false
+      stream_id: stream-ultrasound
+      tags:
+        source: ultrasound
+
+    - id: enc-pacs-04
+      name: PACS 工作站编码器
+      or_id: OR-01
+      role: ENCODER
+      ip: 10.10.1.14
+      mac: "00:0A:1B:10:01:14"
+      model: SDVoE-ENC-4K
+      firmware: 2.4.1
+      location: 护士站电脑旁
+      status: OFFLINE
+      signal_present: false
+      stream_id: stream-pacs
+      tags:
+        source: pacs
+
+    - id: dec-boom-01
+      name: 主吊臂解码器
+      or_id: OR-01
+      role: DECODER
+      ip: 10.10.1.21
+      mac: "00:0A:1B:10:02:21"
+      model: SDVoE-DEC-4K
+      firmware: 2.4.1
+      location: 主吊臂后方
+      status: ONLINE
+      signal_present: true
+      stream_id: stream-endo-main
+      tags:
+        sink: boom_main
+
+    - id: dec-boom-02
+      name: 辅吊臂解码器
+      or_id: OR-01
+      role: DECODER
+      ip: 10.10.1.24
+      mac: "00:0A:1B:10:02:24"
+      model: SDVoE-DEC-4K
+      firmware: 2.4.1
+      location: 辅吊臂后方
+      status: ONLINE
+      signal_present: true
+      stream_id: stream-cam
+      tags:
+        sink: boom_aux
+
+    - id: dec-wall-l
+      name: 左墙显解码器
+      or_id: OR-01
+      role: DECODER
+      ip: 10.10.1.22
+      mac: "00:0A:1B:10:02:22"
+      model: SDVoE-DEC-4K
+      firmware: 2.4.1
+      location: 左侧墙显
+      status: ONLINE
+      signal_present: true
+      stream_id: stream-cam
+      tags:
+        sink: wall_left
+
+    - id: dec-wall-r
+      name: 右墙显解码器
+      or_id: OR-01
+      role: DECODER
+      ip: 10.10.1.23
+      mac: "00:0A:1B:10:02:23"
+      model: SDVoE-DEC-4K
+      firmware: 2.4.0
+      location: 右侧墙显
+      status: DEGRADED
+      signal_present: false
+      tags:
+        sink: wall_right
+
+    - id: dec-rec-01
+      name: 录播输入解码器
+      or_id: OR-01
+      role: DECODER
+      ip: 10.10.1.31
+      mac: "00:0A:1B:10:03:31"
+      model: SDVoE-DEC-HD
+      firmware: 2.3.8
+      location: 控制室机柜
+      status: ONLINE
+      signal_present: true
+      stream_id: stream-endo-main
+      tags:
+        sink: recorder
+
+    - id: sw-or-core
+      name: 手术室 SDVoE 接入交换机
+      or_id: OR-01
+      role: SWITCH
+      ip: 10.10.1.1
+      mac: "00:0A:1B:10:00:01"
+      model: AV-SW-48P
+      firmware: 1.12.0
+      location: 控制室机柜
+      status: ONLINE
+      tags:
+        role: fabric

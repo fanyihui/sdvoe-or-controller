@@ -1,0 +1,35 @@
+# Build
+**/target/
+**/build/
+**/.gradle/
+**/out/
+*.class
+*.jar
+*.war
+*.ear
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/.pytest_cache/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs / local
+*.log
+.env
+.env.*
+!.env.example
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+dependency-reduced-pom.xml

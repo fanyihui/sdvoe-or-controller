@@ -1,0 +1,155 @@
+# 手术室视频路由策略：按源类型选择 Matrix / SDVoE
+
+version: 1
+defaults:
+  max_bridge_hops: 1
+  conflict_policy: steal_with_confirm
+  post_switch_signal_timeout_ms: 800
+  audit: true
+
+# 全局加权：Planner 代价函数系数
+cost_weights:
+  latency: 0.45
+  bridge_hop: 0.25
+  reliability: 0.15
+  hop_count: 0.10
+  fabric_preference: 0.05
+
+source_type_policies:
+  ENDOSCOPE:
+    description: 腔镜主视频，主刀屏优先走矩阵直达
+    preferred_fabrics: [MATRIX, SDVOE]
+    fallback_fabrics: [SDVOE]
+    constraints:
+      max_latency_ms: 40
+      max_bridge_hops: 0          # 主路径尽量禁止桥接
+      require_lossless: true
+      allow_multicast_fanout: false
+    sink_overrides:
+      - when_sink_role: PRIMARY_SURGEON_DISPLAY
+        preferred_fabrics: [MATRIX]
+        constraints:
+          max_latency_ms: 30
+          lock_mode: hard
+      - when_sink_role: RECORDER
+        # 录制跟随主路径镜像，避免二次桥接
+        mirror_of: PRIMARY_SURGEON_DISPLAY
+      - when_sink_role: TEACHING_DISPLAY
+        preferred_fabrics: [SDVOE, MATRIX]
+        constraints:
+          max_latency_ms: 80
+          max_bridge_hops: 1
+
+  SURGICAL_CAM:
+    description: 术野摄像机，多屏分发优先 SDVoE
+    preferred_fabrics: [SDVOE, MATRIX]
+    fallback_fabrics: [MATRIX]
+    constraints:
+      max_latency_ms: 60
+      max_bridge_hops: 1
+      require_lossless: true
+      allow_multicast_fanout: true
+      prefer_multicast_when_sinks_gte: 2
+
+  ULTRASOUND:
+    description: 超声，近场矩阵 / 远端 SDVoE
+    preferred_fabrics: [MATRIX, SDVOE]
+    fallback_fabrics: [SDVOE, MATRIX]
+    constraints:
+      max_latency_ms: 80
+      max_bridge_hops: 1
+      require_lossless: true
+    rules:
+      - if: "distance_class == 'NEAR'"
+        preferred_fabrics: [MATRIX]
+      - if: "distance_class == 'FAR' or cross_room"
+        preferred_fabrics: [SDVOE]
+
+  CARM_FLUORO:
+    description: C臂透视，灰阶与实时性优先矩阵
+    preferred_fabrics: [MATRIX]
+    fallback_fabrics: [SDVOE]
+    constraints:
+      max_latency_ms: 40
+      max_bridge_hops: 0
+      require_lossless: true
+      color_priority: grayscale_fidelity
+
+  PATIENT_MONITOR:
+    description: 监护仪，灵活分发优先 SDVoE
+    preferred_fabrics: [SDVOE, MATRIX]
+    fallback_fabrics: [MATRIX]
+    constraints:
+      max_latency_ms: 120
+      max_bridge_hops: 1
+      require_lossless: false
+
+  PACS_WORKSTATION:
+    description: PACS 阅片，高分辨率优先 SDVoE
+    preferred_fabrics: [SDVOE]
+    fallback_fabrics: [MATRIX]
+    constraints:
+      max_latency_ms: 150
+      max_bridge_hops: 1
+      require_lossless: true
+      prefer_high_resolution: true
+
+  NAVIGATION:
+    description: 导航系统，尽量与主术野同 Fabric，便于同步
+    preferred_fabrics: [MATRIX, SDVOE]
+    fallback_fabrics: [SDVOE]
+    constraints:
+      max_latency_ms: 50
+      max_bridge_hops: 0
+      require_genlock_with: ENDOSCOPE
+      require_lossless: true
+
+  ROOM_PC:
+    description: 室内PC/笔记本投屏
+    preferred_fabrics: [SDVOE, MATRIX]
+    fallback_fabrics: [MATRIX]
+    constraints:
+      max_latency_ms: 100
+      max_bridge_hops: 1
+      allow_multicast_fanout: true
+
+  RECORDER_PLAYBACK:
+    description: 录播回放
+    preferred_fabrics: [SDVOE, MATRIX]
+    fallback_fabrics: [MATRIX]
+    constraints:
+      max_latency_ms: 100
+      max_bridge_hops: 1
+      require_lossless: true
+
+  EXTERNAL_IN:
+    description: 外部临时接入，按能力自动判定
+    preferred_fabrics: [SDVOE, MATRIX]
+    fallback_fabrics: [MATRIX, SDVOE]
+    constraints:
+      max_latency_ms: 100
+      max_bridge_hops: 1
+      capability_driven: true
+
+scene_templates:
+  OR_START:
+    description: 开台默认布局
+    routes:
+      - source: endoscope_main
+        sink: boom_main
+      - source: endoscope_main
+        sink: recorder_in1
+      - source: surgical_cam
+        sink: wall_left
+      - source: pacs
+        sink: wall_right
+
+  OR_TEACHING:
+    description: 示教模式，强调一源多显
+    routes:
+      - source: endoscope_main
+        sink: boom_main
+      - source: endoscope_main
+        sink: teaching_decoder_group
+      - source: surgical_cam
+        sink: wall_left
