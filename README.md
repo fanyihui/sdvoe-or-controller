@@ -1,63 +1,42 @@
 # SDVoE OR Controller
 
-手术室 **SDVoE + 视频矩阵** 统一路由控制框架。
-
-首个应用：获取本手术室内全部 SDVoE 设备清单。
+手术室 **SDVoE + 视频矩阵** 统一路由控制框架（**Spring Boot 3**）。
 
 ## Features
 
-- 统一领域模型（Source / Sink / Route / Scene）
-- Matrix / SDVoE / Bridge 适配器抽象
-- 按视频源类型选择 Matrix 或 SDVoE 的策略引擎
-- **应用 1**：本手术室 SDVoE 设备清单（CLI + HTTP API）
+- Spring Boot Web API + OR Desk 前端
+- 首页：当日手术排班；工作空间：患者信息 / 视频源 / 输出目的地
+- 拖拽路由 + 服务端持久化（SQLite / PostgreSQL）+ 启动自动恢复
 
-## Quick start — OR Desk 控制台
+## Quick start
 
 ```bash
 cd java
-mvn -q compile exec:java -Dexec.mainClass=com.or.sdvoe.app.OrConsoleHttpServer -Dexec.args="8080"
-# 浏览器打开 http://127.0.0.1:8080
+mvn -q spring-boot:run
+# http://127.0.0.1:8080
 ```
 
-- 首页：本手术室当日排班患者手术列表  
-- 进入工作空间：患者/手术信息 · 视频源 · 输出目的地  
-
 ```bash
+curl -s http://127.0.0.1:8080/health
 curl -s http://127.0.0.1:8080/api/v1/or/schedule
-curl -s http://127.0.0.1:8080/api/v1/or/cases/case-20261001-001/workspace
-
-# 拖拽路由（API）
-curl -s -X POST http://127.0.0.1:8080/api/v1/or/cases/case-20261001-001/routes \
-  -H 'Content-Type: application/json' \
-  -d '{"sourceId":"src-endo","destinationId":"dst-boom-main"}'
-```
-
-工作空间 UI：将视频源拖到输出目的地即可建立路由；冲突时确认覆盖。
-
-路由保存在**服务器端**（默认 SQLite `data/or-desk.db`，可切 PostgreSQL），变更自动备份到 `data/backups/`，启动自动恢复。详见 [java/docs/ROUTE_SERVER_STORE.md](java/docs/ROUTE_SERVER_STORE.md)。
-
-设备清单 CLI：
-
-```bash
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
 ```
 
 ## Layout
 
 | Path | Description |
 |------|-------------|
-| `web/` | OR Desk 前端（首页 + 手术工作空间） |
-| `java/` | Java 21 Maven 主工程 |
+| `java/` | Spring Boot 主工程 |
+| `web/` | 前端源码（同时打包到 `classpath:/static/`） |
 | `docs/` | 架构与应用框架设计 |
-| `config/` | 手术室、排班、路由策略配置 |
+| `config/` | 业务 YAML 副本 |
 | `src/` / `examples/` | 早期 Python 对照骨架 |
 
 ## Docs
 
-- [App framework（排班→工作空间）](docs/APP_FRAMEWORK.md)
+- [Spring Boot](java/docs/SPRING_BOOT.md)
+- [App framework](docs/APP_FRAMEWORK.md)
+- [Server route store](java/docs/ROUTE_SERVER_STORE.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [App1: SDVoE device inventory](java/docs/APP1_DEVICE_INVENTORY.md)
-- [Policy flow](docs/POLICY_FLOW.md)
 
 ## License
 
