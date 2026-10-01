@@ -19,20 +19,24 @@
 
 ```bash
 cd java
-# 应用1：本手术室 SDVoE 设备清单
-mvn -q compile exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
+# OR Desk 控制台（排班首页 + 手术工作空间 UI/API）
+mvn -q compile exec:java -Dexec.mainClass=com.or.sdvoe.app.OrConsoleHttpServer -Dexec.args="8080"
+# http://127.0.0.1:8080
 
-# 仅 Encoder / JSON
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp -Dexec.args="--role ENCODER"
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp -Dexec.args="--json"
-
-# HTTP API
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.OrInventoryHttpServer -Dexec.args="8080"
+# 应用1：本手术室 SDVoE 设备清单 CLI
+mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
 ```
 
-配置：`src/main/resources/or-controller.yaml`（或 `config/or-controller.yaml`）
+配置：
 
-说明：[docs/APP1_DEVICE_INVENTORY.md](docs/APP1_DEVICE_INVENTORY.md)
+- `src/main/resources/or-controller.yaml` — 手术室与 SDVoE 设备
+- `src/main/resources/schedule.yaml` — 当日排班与逻辑源/目的地
+- 前端：仓库根目录 `web/`（亦打包进 `classpath:web/`）
+
+说明：
+
+- [应用框架](../docs/APP_FRAMEWORK.md)
+- [设备清单](docs/APP1_DEVICE_INVENTORY.md)
 
 ## 包结构
 
