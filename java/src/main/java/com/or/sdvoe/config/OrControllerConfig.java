@@ -23,6 +23,7 @@ public final class OrControllerConfig {
     private final String discoveryMode;
     private final String managerBaseUrl;
     private final List<SdvoeDevice> inventoryDevices;
+    private final DatabaseSettings databaseSettings;
 
     @SuppressWarnings("unchecked")
     private OrControllerConfig(Map<String, Object> root) {
@@ -47,6 +48,7 @@ public final class OrControllerConfig {
             devices.add(parseDevice(raw, this.operatingRoom.getId()));
         }
         this.inventoryDevices = List.copyOf(devices);
+        this.databaseSettings = DatabaseSettings.fromRoot(root);
     }
 
     public static OrControllerConfig load(Path path) {
@@ -136,5 +138,19 @@ public final class OrControllerConfig {
             }
         }
         return Collections.unmodifiableList(filtered);
+    }
+
+    public DatabaseSettings getDatabaseSettings() {
+        return databaseSettings;
+    }
+
+    /** @deprecated use {@link #getDatabaseSettings()} */
+    @Deprecated
+    public String getDatabasePath() {
+        return databaseSettings.getPath();
+    }
+
+    public boolean isRestoreRoutesOnStartup() {
+        return databaseSettings.isRestoreRoutesOnStartup();
     }
 }
