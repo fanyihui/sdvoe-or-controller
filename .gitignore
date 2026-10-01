@@ -29,6 +29,13 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Local SQLite route DB
+**/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
 # Maven
 pom.xml.tag
 pom.xml.releaseBackup

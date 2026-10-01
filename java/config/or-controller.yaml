@@ -6,6 +6,11 @@ operating_room:
   building: 外科楼
   floor: 3F
 
+# 路由持久化（SQLite）；可用环境变量 OR_DESK_DB 覆盖路径
+database:
+  path: data/or-desk.db
+  restore_routes_on_startup: true
+
 sdvoe:
   discovery:
     # inventory | mock | http

@@ -29,9 +29,10 @@ mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
 
 配置：
 
-- `src/main/resources/or-controller.yaml` — 手术室与 SDVoE 设备
+- `src/main/resources/or-controller.yaml` — 手术室、SDVoE 设备、SQLite 路径
 - `src/main/resources/schedule.yaml` — 当日排班与逻辑源/目的地
 - 前端：仓库根目录 `web/`（亦打包进 `classpath:web/`）
+- 路由库：默认 `data/or-desk.db`（可用 `OR_DESK_DB` 覆盖）；启动自动恢复
 
 说明：
 

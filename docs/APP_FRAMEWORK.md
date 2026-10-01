@@ -142,6 +142,18 @@ config/schedule.yaml
 2. 经 `SDVoEAdapter` 下发 `set_stream` + `subscribe`  
 3. 目的地已被占用时返回 **409**，前端确认后 `confirmed=true` 覆盖  
 4. `workspace.destinations[].routedSourceName` 展示当前路由  
+5. **SQLite 持久化**：创建/覆盖/清除时写入 `data/or-desk.db`；启动时自动读取并重新下发  
+
+配置（`or-controller.yaml`）：
+
+```yaml
+database:
+  path: data/or-desk.db
+  restore_routes_on_startup: true
+```
+
+环境变量 `OR_DESK_DB` 可覆盖数据库路径。  
+`GET /health` 返回 `persistedRoutes` / `restoredOk`；`GET /api/v1/or/routes` 列出当前活动路由。  
 
 ---
 

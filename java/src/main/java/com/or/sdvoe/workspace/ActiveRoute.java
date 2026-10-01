@@ -30,6 +30,32 @@ public final class ActiveRoute {
             List<String> fabrics,
             String policyReason,
             String operator) {
+        this(
+                routeId,
+                caseId,
+                sourceId,
+                sourceName,
+                destinationId,
+                destinationName,
+                streamId,
+                fabrics,
+                policyReason,
+                operator,
+                Instant.now());
+    }
+
+    public ActiveRoute(
+            String routeId,
+            String caseId,
+            String sourceId,
+            String sourceName,
+            String destinationId,
+            String destinationName,
+            String streamId,
+            List<String> fabrics,
+            String policyReason,
+            String operator,
+            Instant createdAt) {
         this.routeId = routeId;
         this.caseId = caseId;
         this.sourceId = sourceId;
@@ -40,7 +66,7 @@ public final class ActiveRoute {
         this.fabrics = List.copyOf(fabrics);
         this.policyReason = policyReason;
         this.operator = operator;
-        this.createdAt = Instant.now();
+        this.createdAt = createdAt != null ? createdAt : Instant.now();
     }
 
     public String getRouteId() {

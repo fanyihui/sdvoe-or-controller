@@ -5,6 +5,7 @@ import com.or.sdvoe.discovery.SdvoeDiscoveryFactory;
 import com.or.sdvoe.domain.SdvoeDeviceInventory;
 import com.or.sdvoe.domain.SdvoeDeviceRole;
 import com.or.sdvoe.domain.SurgeryWorkspace;
+import com.or.sdvoe.persistence.RouteRepository;
 import com.or.sdvoe.policy.PolicyEngine;
 import com.or.sdvoe.schedule.ScheduleRepository;
 import com.or.sdvoe.schedule.ScheduleService;
@@ -56,16 +57,52 @@ public final class OrConsoleHttpServer {
         ScheduleService scheduleService = new ScheduleService(config.getOperatingRoom(), scheduleRepo);
         PolicyEngine policyEngine = loadPolicyEngine();
         FabricOrchestrator orchestrator = WorkspaceRoutingService.createDefaultOrchestrator();
-        WorkspaceRoutingService routingService =
-                new WorkspaceRoutingService(scheduleService, deviceService, policyEngine, orchestrator);
+
+        Path dbPath = resolveDatabasePath(config.getDatabasePath());
+        RouteRepository routeRepository = new RouteRepository(dbPath);
+        Runtime.getRuntime().addShutdownHook(new Thread(routeRepository::close));
+
+        WorkspaceRoutingService routingService = new WorkspaceRoutingService(
+                config.getOperatingRoom().getId(),
+                scheduleService,
+                deviceService,
+                policyEngine,
+                orchestrator,
+                routeRepository);
         SurgeryWorkspaceService workspaceService = new SurgeryWorkspaceService(
                 config.getOperatingRoom(), scheduleService, deviceService, routingService);
+
+        int[] restoreStats = new int[] {0, 0};
+        if (config.isRestoreRoutesOnStartup()) {
+            restoreStats = routingService.restorePersistedRoutes();
+        }
 
         Path webRoot = resolveWebRoot();
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
-        server.createContext("/health", ex -> writeJson(ex, 200, "{\"status\":\"ok\"}"));
+        final int restoredOk = restoreStats[0];
+        final int restoredFail = restoreStats[1];
+        server.createContext("/health", ex -> {
+            Map<String, Object> health = new LinkedHashMap<>();
+            health.put("status", "ok");
+            health.put("database", dbPath.toString());
+            health.put("persistedRoutes", routeRepository.countByOr(config.getOperatingRoom().getId()));
+            health.put("restoredOk", restoredOk);
+            health.put("restoredFailed", restoredFail);
+            writeJson(ex, 200, JsonUtil.toPrettyJson(health));
+        });
 
+        server.createContext("/api/v1/or/routes", ex -> {
+            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("orId", config.getOperatingRoom().getId());
+            body.put("database", dbPath.toString());
+            body.put("routes", routingService.listAllRoutes().stream().map(ActiveRoute::toMap).toList());
+            writeJson(ex, 200, JsonUtil.toPrettyJson(body));
+        });
         server.createContext("/api/v1/or/schedule", ex -> {
             if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
                 writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
@@ -124,10 +161,22 @@ public final class OrConsoleHttpServer {
                         + "  GET  /api/v1/or/schedule%n"
                         + "  GET  /api/v1/or/cases/{id}/workspace%n"
                         + "  POST /api/v1/or/cases/{id}/routes%n"
+                        + "  GET  /api/v1/or/routes%n"
+                        + "  DB  %s%n"
+                        + "  Restore ok=%d failed=%d%n"
                         + "  OR=%s (%s)%n",
                 port,
+                dbPath,
+                restoredOk,
+                restoredFail,
                 config.getOperatingRoom().getName(),
                 config.getOperatingRoom().getId());
+    }
+
+    private static Path resolveDatabasePath(String configured) {
+        String override = System.getenv("OR_DESK_DB");
+        Path path = Path.of(override != null && !override.isBlank() ? override : configured);
+        return path.toAbsolutePath().normalize();
     }
 
     private static void handleCases(

@@ -16,11 +16,14 @@ import com.or.sdvoe.domain.SdvoeDevice;
 import com.or.sdvoe.domain.SdvoeDeviceInventory;
 import com.or.sdvoe.domain.VideoSink;
 import com.or.sdvoe.domain.VideoSource;
+import com.or.sdvoe.persistence.RouteRepository;
 import com.or.sdvoe.policy.PolicyEngine;
 import com.or.sdvoe.schedule.ScheduleRepository;
 import com.or.sdvoe.schedule.ScheduleService;
 import com.or.sdvoe.service.FabricOrchestrator;
 import com.or.sdvoe.service.SdvoeDeviceInventoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -32,27 +35,35 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 手术工作空间拖拽路由：逻辑源 → 逻辑目的地。
- * 通过策略引擎给出通路偏好，并经 SDVoE Adapter 下发 subscribe。
+ * 路由写入 SQLite，进程启动时自动恢复并重新下发。
  */
 public class WorkspaceRoutingService {
 
+    private static final Logger log = LoggerFactory.getLogger(WorkspaceRoutingService.class);
+
+    private final String orId;
     private final ScheduleService scheduleService;
     private final SdvoeDeviceInventoryService deviceInventoryService;
     private final PolicyEngine policyEngine;
     private final FabricOrchestrator orchestrator;
+    private final RouteRepository routeRepository;
     /** caseId -> (destinationId -> route) */
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, ActiveRoute>> routesByCase =
             new ConcurrentHashMap<>();
 
     public WorkspaceRoutingService(
+            String orId,
             ScheduleService scheduleService,
             SdvoeDeviceInventoryService deviceInventoryService,
             PolicyEngine policyEngine,
-            FabricOrchestrator orchestrator) {
+            FabricOrchestrator orchestrator,
+            RouteRepository routeRepository) {
+        this.orId = Objects.requireNonNull(orId);
         this.scheduleService = Objects.requireNonNull(scheduleService);
         this.deviceInventoryService = Objects.requireNonNull(deviceInventoryService);
         this.policyEngine = Objects.requireNonNull(policyEngine);
         this.orchestrator = Objects.requireNonNull(orchestrator);
+        this.routeRepository = Objects.requireNonNull(routeRepository);
     }
 
     public static FabricOrchestrator createDefaultOrchestrator() {
@@ -72,6 +83,14 @@ public class WorkspaceRoutingService {
         return List.copyOf(map.values());
     }
 
+    public List<ActiveRoute> listAllRoutes() {
+        List<ActiveRoute> all = new ArrayList<>();
+        for (ConcurrentHashMap<String, ActiveRoute> map : routesByCase.values()) {
+            all.addAll(map.values());
+        }
+        return List.copyOf(all);
+    }
+
     public ActiveRoute getRouteForDestination(String caseId, String destinationId) {
         ConcurrentHashMap<String, ActiveRoute> map = routesByCase.get(caseId);
         if (map == null) {
@@ -86,6 +105,16 @@ public class WorkspaceRoutingService {
             String destinationId,
             String operator,
             boolean confirmed) {
+        return route(caseId, sourceId, destinationId, operator, confirmed, true);
+    }
+
+    private ActiveRoute route(
+            String caseId,
+            String sourceId,
+            String destinationId,
+            String operator,
+            boolean confirmed,
+            boolean persist) {
         scheduleService.getCase(caseId);
         ScheduleRepository repo = scheduleService.repository();
 
@@ -155,18 +184,75 @@ public class WorkspaceRoutingService {
         routesByCase
                 .computeIfAbsent(caseId, k -> new ConcurrentHashMap<>())
                 .put(destinationId, active);
+
+        if (persist) {
+            routeRepository.upsert(orId, active);
+            log.info(
+                    "Persisted route {} {} -> {} (case={})",
+                    active.getRouteId(),
+                    active.getSourceId(),
+                    active.getDestinationId(),
+                    caseId);
+        }
         return active;
     }
 
     public void clearRoute(String caseId, String destinationId) {
         ConcurrentHashMap<String, ActiveRoute> map = routesByCase.get(caseId);
-        if (map == null) {
-            return;
-        }
-        ActiveRoute removed = map.remove(destinationId);
+        ActiveRoute removed = map == null ? null : map.remove(destinationId);
         if (removed != null) {
             orchestrator.release(removed.getRouteId());
         }
+        routeRepository.delete(orId, caseId, destinationId);
+        log.info("Cleared persisted route case={} dest={}", caseId, destinationId);
+    }
+
+    /**
+     * 从数据库加载本手术室路由并重新下发到设备。
+     *
+     * @return [restoredOk, restoredFailed]
+     */
+    public int[] restorePersistedRoutes() {
+        List<ActiveRoute> persisted = routeRepository.findByOr(orId);
+        int ok = 0;
+        int fail = 0;
+        for (ActiveRoute saved : persisted) {
+            try {
+                // 启动恢复：直接覆盖并重新下发，不再二次写入冲突提示
+                route(
+                        saved.getCaseId(),
+                        saved.getSourceId(),
+                        saved.getDestinationId(),
+                        saved.getOperator() == null ? "startup-restore" : saved.getOperator(),
+                        true,
+                        true);
+                ok++;
+                log.info(
+                        "Restored route {} -> {} (case={})",
+                        saved.getSourceId(),
+                        saved.getDestinationId(),
+                        saved.getCaseId());
+            } catch (Exception e) {
+                fail++;
+                // 设备暂时不可用时，仍把意图放回内存，便于 UI 展示；库中记录保留待下次启动重试
+                routesByCase
+                        .computeIfAbsent(saved.getCaseId(), k -> new ConcurrentHashMap<>())
+                        .put(saved.getDestinationId(), saved);
+                log.warn(
+                        "Failed to re-apply persisted route {} -> {} (case={}): {}",
+                        saved.getSourceId(),
+                        saved.getDestinationId(),
+                        saved.getCaseId(),
+                        e.getMessage());
+            }
+        }
+        log.info(
+                "Route restore finished for {}: ok={}, failed={}, total={}",
+                orId,
+                ok,
+                fail,
+                persisted.size());
+        return new int[] {ok, fail};
     }
 
     private PolicyDecision decide(
@@ -190,10 +276,8 @@ public class WorkspaceRoutingService {
         List<FabricKind> preferred = decision.getPreferredFabrics();
         FabricKind primary = preferred.isEmpty() ? FabricKind.SDVOE : preferred.get(0);
 
-        // 当前逻辑源/目的地均挂在 SDVoE 设备上；Matrix 偏好仍走 SDVoE 直连并记录策略原因
         List<FabricStep> steps = new ArrayList<>();
         if (primary == FabricKind.MATRIX) {
-            // 无矩阵交叉点映射时降级 SDVoE，策略原因保留供 UI 展示
             primary = FabricKind.SDVOE;
         }
         if (primary == FabricKind.SDVOE || primary == FabricKind.BRIDGE) {
@@ -226,7 +310,6 @@ public class WorkspaceRoutingService {
         if (preferred.contains(FabricKind.SDVOE) || preferred.isEmpty()) {
             return List.of(FabricKind.SDVOE);
         }
-        // Matrix-preferred but executed via SDVoE device path in this room layout
         return List.of(FabricKind.SDVOE);
     }
 }

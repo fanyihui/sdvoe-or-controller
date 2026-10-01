@@ -34,6 +34,8 @@ curl -s -X POST http://127.0.0.1:8080/api/v1/or/cases/case-20261001-001/routes \
 
 工作空间 UI：将视频源拖到输出目的地即可建立路由；冲突时确认覆盖。
 
+路由会写入 SQLite（默认 `java/data/or-desk.db`），下次启动自动恢复并重新下发。可用 `OR_DESK_DB` 覆盖路径。
+
 设备清单 CLI：
 
 ```bash
