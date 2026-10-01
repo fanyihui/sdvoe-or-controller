@@ -52,6 +52,18 @@ public class SDVoEAdapter implements FabricAdapter {
                     subscriptions.put(dec, Map.copyOf(step.getParams()));
                     applied.add(step);
                 }
+                case "configure_mosaic" -> {
+                    String mosaicId = String.valueOf(step.getParams().get("mosaic_id"));
+                    subscriptions.put("mosaic:" + mosaicId, Map.copyOf(step.getParams()));
+                    applied.add(step);
+                }
+                case "clear_mosaic" -> {
+                    Object mosaicId = step.getParams().get("mosaic_id");
+                    if (mosaicId != null) {
+                        subscriptions.remove("mosaic:" + mosaicId);
+                    }
+                    applied.add(step);
+                }
                 case "set_genlock" -> applied.add(step);
                 default -> {
                     return ApplyResult.failure("unsupported sdvoe action: " + step.getAction());

@@ -1,0 +1,20 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: or-desk
+  web:
+    resources:
+      static-locations: classpath:/static/,file:../web/,file:web/
+
+# OR Desk 业务配置文件（classpath）
+or-desk:
+  config-resource: or-controller.yaml
+  schedule-resource: schedule.yaml
+  policy-resource: routing-policies.yaml
+
+logging:
+  level:
+    root: INFO
+    com.or.sdvoe: INFO
