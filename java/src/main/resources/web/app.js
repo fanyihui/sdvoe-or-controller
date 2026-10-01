@@ -122,6 +122,8 @@ function paintWorkspace(caseId, ws) {
   const sources = ws.sources || [];
   const destinations = ws.destinations || [];
   const activeRoutes = ws.activeRoutes || [];
+  const activeMosaics = ws.activeMosaics || [];
+  const mosaicLayouts = ws.mosaicLayouts || [];
 
   app.innerHTML = `
     <div class="toast" id="toast" hidden></div>
@@ -137,10 +139,10 @@ function paintWorkspace(caseId, ws) {
       <div class="top-meta">
         <strong>OR Desk</strong>
         <div>计划 ${escapeHtml(c.scheduledStart || "—")}–${escapeHtml(c.scheduledEnd || "—")}</div>
-        <div>活动路由 ${activeRoutes.length} 条</div>
+        <div>路由 ${activeRoutes.length} · 拼屏 ${activeMosaics.length}</div>
       </div>
     </div>
-    <p class="drag-hint">将左侧 <strong>视频源</strong> 拖到右侧 <strong>输出目的地</strong> 完成路由；目的地已有信号时可确认覆盖。</p>
+    <p class="drag-hint">将左侧 <strong>视频源</strong> 拖到右侧 <strong>输出目的地</strong> 完成单路路由；下方可配置多源拼屏并推送到目标。</p>
     <div class="ws-grid">
       <section class="panel" aria-label="患者与手术信息">
         <h3>患者与手术信息</h3>
@@ -173,6 +175,7 @@ function paintWorkspace(caseId, ws) {
         </div>
       </section>
     </div>
+    ${mosaicSectionHtml(mosaicLayouts, activeMosaics, destinations)}
   `;
 
   document.getElementById("backBtn").addEventListener("click", () => {
@@ -181,6 +184,7 @@ function paintWorkspace(caseId, ws) {
   });
 
   bindDragRouting(caseId);
+  bindMosaicUi(caseId, ws);
 }
 
 function bindDragRouting(caseId) {
@@ -305,9 +309,10 @@ function sourceCard(s) {
 function destCard(d) {
   const online = d.deviceStatus === "ONLINE";
   const routed = !!d.routed;
+  const isMosaic = !!d.mosaic;
   return `
     <article
-      class="endpoint dest ${d.ultraLowLatency ? "critical" : ""} ${routed ? "routed" : ""}"
+      class="endpoint dest ${d.ultraLowLatency ? "critical" : ""} ${routed ? "routed" : ""} ${isMosaic ? "mosaic-feed" : ""}"
       data-dest-id="${escapeHtml(d.id)}"
     >
       <div>
@@ -325,11 +330,246 @@ function destCard(d) {
       </div>
       <div class="flags">
         <span class="flag ${online ? "ok" : "off"}">${escapeHtml(d.deviceStatus || "UNKNOWN")}</span>
-        <span class="flag ${routed || d.signalPresent ? "signal" : ""}">${routed ? "已路由" : d.signalPresent ? "有信号" : "空闲"}</span>
-        ${routed ? `<button type="button" class="btn-clear" data-clear-dest="${escapeHtml(d.id)}">清除</button>` : ""}
+        <span class="flag ${routed || d.signalPresent ? "signal" : ""}">${
+          isMosaic ? "拼屏" : routed ? "已路由" : d.signalPresent ? "有信号" : "空闲"
+        }</span>
+        ${routed && !isMosaic ? `<button type="button" class="btn-clear" data-clear-dest="${escapeHtml(d.id)}">清除</button>` : ""}
       </div>
     </article>
   `;
+}
+
+function mosaicSectionHtml(layouts, mosaics, destinations) {
+  return `
+    <section class="mosaic-panel" aria-label="多源拼屏">
+      <div class="mosaic-head">
+        <div>
+          <h3>多源拼屏</h3>
+          <p>选择布局，将视频源拖入格子，再推送到输出目的地。</p>
+        </div>
+        <div class="mosaic-create">
+          <label>
+            布局
+            <select id="mosaicLayoutSelect">
+              ${layouts.map((l) => `<option value="${escapeHtml(l.id)}">${escapeHtml(l.name)}（${l.cellCount} 路）</option>`).join("")}
+            </select>
+          </label>
+          <button class="btn btn-primary" type="button" id="createMosaicBtn">新建拼屏</button>
+        </div>
+      </div>
+      <div class="mosaic-list" id="mosaicList">
+        ${
+          mosaics.length
+            ? mosaics.map((m) => mosaicCard(m, destinations)).join("")
+            : `<p class="mosaic-empty">尚未创建拼屏。可先选 2×2 / 4×4 等布局。</p>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function mosaicCard(m, destinations) {
+  const cells = m.cells || [];
+  const assigned = cells.filter((c) => c.assigned).length;
+  return `
+    <article class="mosaic-card" data-mosaic-id="${escapeHtml(m.mosaicId)}">
+      <div class="mosaic-card-top">
+        <div>
+          <h4>${escapeHtml(m.name || m.layoutName)}</h4>
+          <p>${escapeHtml(m.layoutName)} · ${assigned}/${cells.length} 路已绑定${
+            m.pushed
+              ? ` · 已推送 → <strong>${escapeHtml(m.destinationName || m.destinationId)}</strong>`
+              : " · 草稿"
+          }</p>
+        </div>
+        <div class="mosaic-actions">
+          <select class="mosaic-dest" data-mosaic-dest="${escapeHtml(m.mosaicId)}" aria-label="推送目的地">
+            <option value="">选择目的地…</option>
+            ${(destinations || [])
+              .map(
+                (d) =>
+                  `<option value="${escapeHtml(d.id)}" ${
+                    d.id === m.destinationId ? "selected" : ""
+                  }>${escapeHtml(d.name)}</option>`
+              )
+              .join("")}
+          </select>
+          <button class="btn btn-primary" type="button" data-push-mosaic="${escapeHtml(m.mosaicId)}">推送</button>
+          ${
+            m.pushed
+              ? `<button class="btn btn-ghost" type="button" data-stop-mosaic="${escapeHtml(m.mosaicId)}">停止</button>`
+              : ""
+          }
+          <button class="btn-clear" type="button" data-delete-mosaic="${escapeHtml(m.mosaicId)}">删除</button>
+        </div>
+      </div>
+      <div
+        class="mosaic-grid"
+        style="--mosaic-rows:${m.rows}; --mosaic-cols:${m.cols}"
+        data-mosaic-grid="${escapeHtml(m.mosaicId)}"
+      >
+        ${cells.map((cell) => mosaicCellHtml(m.mosaicId, cell)).join("")}
+      </div>
+    </article>
+  `;
+}
+
+function mosaicCellHtml(mosaicId, cell) {
+  const filled = !!cell.assigned;
+  return `
+    <div
+      class="mosaic-cell ${filled ? "filled" : ""}"
+      data-mosaic-id="${escapeHtml(mosaicId)}"
+      data-cell-index="${cell.index}"
+      style="grid-row: ${cell.row + 1} / span ${cell.rowSpan || 1}; grid-column: ${cell.col + 1} / span ${cell.colSpan || 1};"
+    >
+      <span class="cell-index">#${cell.index + 1}</span>
+      <strong>${filled ? escapeHtml(cell.sourceName || cell.sourceId) : "拖入视频源"}</strong>
+      ${
+        filled
+          ? `<button type="button" class="cell-clear" data-clear-cell="${escapeHtml(mosaicId)}" data-cell-index="${cell.index}">清除</button>`
+          : ""
+      }
+    </div>
+  `;
+}
+
+function bindMosaicUi(caseId, ws) {
+  document.getElementById("createMosaicBtn")?.addEventListener("click", async () => {
+    const layoutId = document.getElementById("mosaicLayoutSelect")?.value;
+    if (!layoutId) return;
+    try {
+      const data = await fetchJson(`/api/v1/or/cases/${encodeURIComponent(caseId)}/mosaics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layoutId }),
+      });
+      showToast(`已创建拼屏：${data.mosaic?.layoutName || layoutId}`, "ok");
+      paintWorkspace(caseId, data.workspace);
+    } catch (err) {
+      showToast(err.message || "创建失败", "error");
+    }
+  });
+
+  app.querySelectorAll(".mosaic-cell").forEach((el) => {
+    el.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      el.classList.add("drop-hover");
+    });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-hover"));
+    el.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      el.classList.remove("drop-hover");
+      const sourceId = e.dataTransfer.getData("text/plain");
+      const mosaicId = el.getAttribute("data-mosaic-id");
+      const index = Number(el.getAttribute("data-cell-index"));
+      if (!sourceId || !mosaicId) return;
+      await assignMosaicCell(caseId, mosaicId, index, sourceId);
+    });
+  });
+
+  app.querySelectorAll("[data-clear-cell]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const mosaicId = btn.getAttribute("data-clear-cell");
+      const index = Number(btn.getAttribute("data-cell-index"));
+      await assignMosaicCell(caseId, mosaicId, index, null);
+    });
+  });
+
+  app.querySelectorAll("[data-push-mosaic]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const mosaicId = btn.getAttribute("data-push-mosaic");
+      const select = app.querySelector(`[data-mosaic-dest="${CSS.escape(mosaicId)}"]`);
+      const destinationId = select?.value;
+      if (!destinationId) {
+        showToast("请先选择推送目的地", "warn");
+        return;
+      }
+      await pushMosaic(caseId, mosaicId, destinationId, false);
+    });
+  });
+
+  app.querySelectorAll("[data-stop-mosaic]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const mosaicId = btn.getAttribute("data-stop-mosaic");
+      try {
+        const data = await fetchJson(
+          `/api/v1/or/cases/${encodeURIComponent(caseId)}/mosaics/${encodeURIComponent(mosaicId)}/push`,
+          { method: "DELETE" }
+        );
+        showToast("已停止拼屏推送", "ok");
+        paintWorkspace(caseId, data.workspace);
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  });
+
+  app.querySelectorAll("[data-delete-mosaic]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const mosaicId = btn.getAttribute("data-delete-mosaic");
+      if (!window.confirm("确认删除该拼屏？")) return;
+      try {
+        const data = await fetchJson(
+          `/api/v1/or/cases/${encodeURIComponent(caseId)}/mosaics/${encodeURIComponent(mosaicId)}`,
+          { method: "DELETE" }
+        );
+        showToast("已删除拼屏", "ok");
+        paintWorkspace(caseId, data.workspace);
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+  });
+}
+
+async function assignMosaicCell(caseId, mosaicId, index, sourceId) {
+  try {
+    const data = await fetchJson(
+      `/api/v1/or/cases/${encodeURIComponent(caseId)}/mosaics/${encodeURIComponent(mosaicId)}/cells`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cells: [{ index, sourceId }] }),
+      }
+    );
+    showToast(sourceId ? "已绑定视频源" : "已清除格子", "ok");
+    paintWorkspace(caseId, data.workspace);
+  } catch (err) {
+    showToast(err.message || "绑定失败", "error");
+  }
+}
+
+async function pushMosaic(caseId, mosaicId, destinationId, confirmed) {
+  try {
+    const data = await fetchJson(
+      `/api/v1/or/cases/${encodeURIComponent(caseId)}/mosaics/${encodeURIComponent(mosaicId)}/push`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destinationId,
+          confirmed,
+          operator: "or-desk-ui",
+        }),
+      }
+    );
+    const mosaic = data.mosaic || {};
+    showToast(`拼屏已推送 → ${mosaic.destinationName || destinationId}`, "ok");
+    paintWorkspace(caseId, data.workspace);
+  } catch (err) {
+    if (err.status === 409 && err.data && err.data.conflict) {
+      const ok = window.confirm("目的地当前已有信号。确认用拼屏画面覆盖吗？");
+      if (ok) {
+        await pushMosaic(caseId, mosaicId, destinationId, true);
+      } else {
+        showToast("已取消推送", "warn");
+      }
+      return;
+    }
+    showToast(err.message || "推送失败", "error");
+  }
 }
 
 function emptyHint(text) {

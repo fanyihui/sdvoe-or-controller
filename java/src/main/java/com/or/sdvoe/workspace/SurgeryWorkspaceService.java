@@ -1,6 +1,7 @@
 package com.or.sdvoe.workspace;
 
 import com.or.sdvoe.domain.DeviceOnlineStatus;
+import com.or.sdvoe.domain.MosaicLayout;
 import com.or.sdvoe.domain.OperatingRoom;
 import com.or.sdvoe.domain.SdvoeDevice;
 import com.or.sdvoe.domain.SdvoeDeviceInventory;
@@ -18,23 +19,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** 组装患者手术工作空间：病例 + 源 + 目的地（带设备实时状态与活动路由）。 */
+/** 组装患者手术工作空间：病例 + 源 + 目的地（带设备实时状态、活动路由与拼屏）。 */
 public class SurgeryWorkspaceService {
 
     private final OperatingRoom operatingRoom;
     private final ScheduleService scheduleService;
     private final SdvoeDeviceInventoryService deviceInventoryService;
     private final WorkspaceRoutingService routingService;
+    private final MosaicService mosaicService;
 
     public SurgeryWorkspaceService(
             OperatingRoom operatingRoom,
             ScheduleService scheduleService,
             SdvoeDeviceInventoryService deviceInventoryService,
-            WorkspaceRoutingService routingService) {
+            WorkspaceRoutingService routingService,
+            MosaicService mosaicService) {
         this.operatingRoom = Objects.requireNonNull(operatingRoom);
         this.scheduleService = Objects.requireNonNull(scheduleService);
         this.deviceInventoryService = Objects.requireNonNull(deviceInventoryService);
         this.routingService = Objects.requireNonNull(routingService);
+        this.mosaicService = Objects.requireNonNull(mosaicService);
     }
 
     public SurgeryWorkspace getWorkspace(String caseId) {
@@ -69,6 +73,15 @@ public class SurgeryWorkspaceService {
             activeRouteMaps.add(route.toMap());
         }
 
+        Map<String, ActiveMosaic> mosaicByDest = new HashMap<>();
+        List<Map<String, Object>> activeMosaicMaps = new ArrayList<>();
+        for (ActiveMosaic mosaic : mosaicService.listMosaics(caseId)) {
+            activeMosaicMaps.add(mosaic.toMap());
+            if (mosaic.isPushed() && mosaic.getDestinationId() != null) {
+                mosaicByDest.put(mosaic.getDestinationId(), mosaic);
+            }
+        }
+
         List<WorkspaceDestination> destinations = new ArrayList<>();
         for (ScheduleRepository.LogicalDestinationDef def : repo.getDestinations()) {
             SdvoeDevice device = byId.get(def.deviceId());
@@ -83,8 +96,15 @@ public class SurgeryWorkspaceService {
                     device == null ? null : device.getStreamId(),
                     device == null ? null : device.getIpAddress(),
                     device == null ? null : device.getLocation());
+            ActiveMosaic mosaic = mosaicByDest.get(def.id());
             ActiveRoute active = routeByDest.get(def.id());
-            if (active != null) {
+            if (mosaic != null) {
+                destinations.add(base.withActiveMosaic(
+                        mosaic.getMosaicId(),
+                        "拼屏 " + mosaic.getLayoutName(),
+                        mosaic.getOutputStreamId(),
+                        mosaic.getRouteId()));
+            } else if (active != null) {
                 destinations.add(base.withActiveRoute(
                         active.getSourceId(),
                         active.getSourceName(),
@@ -95,7 +115,16 @@ public class SurgeryWorkspaceService {
             }
         }
 
+        List<Map<String, Object>> layoutMaps =
+                MosaicLayout.presets().stream().map(MosaicLayout::toMap).toList();
+
         return new SurgeryWorkspace(
-                surgeryCase, operatingRoom, sources, destinations, activeRouteMaps);
+                surgeryCase,
+                operatingRoom,
+                sources,
+                destinations,
+                activeRouteMaps,
+                activeMosaicMaps,
+                layoutMaps);
     }
 }

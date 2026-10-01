@@ -7,6 +7,7 @@
 - Spring Boot Web API + OR Desk 前端
 - 首页：当日手术排班；工作空间：患者信息 / 视频源 / 输出目的地
 - 拖拽路由 + 服务端持久化（SQLite / PostgreSQL）+ 启动自动恢复
+- 多源拼屏：2×2 / 4×4 / 1+3 等布局，合成后推送到目的地
 
 ## Quick start
 
@@ -34,6 +35,7 @@ curl -s http://127.0.0.1:8080/api/v1/or/schedule
 ## Docs
 
 - [Spring Boot](java/docs/SPRING_BOOT.md)
+- [多源拼屏](java/docs/MOSAIC.md)
 - [App framework](docs/APP_FRAMEWORK.md)
 - [Server route store](java/docs/ROUTE_SERVER_STORE.md)
 - [Architecture](docs/ARCHITECTURE.md)

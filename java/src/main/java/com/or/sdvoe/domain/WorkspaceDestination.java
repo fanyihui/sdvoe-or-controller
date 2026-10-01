@@ -18,6 +18,8 @@ public final class WorkspaceDestination {
     private final String routedSourceId;
     private final String routedSourceName;
     private final String routeId;
+    private final String mosaicId;
+    private final boolean mosaic;
 
     public WorkspaceDestination(
             String id,
@@ -43,7 +45,9 @@ public final class WorkspaceDestination {
                 location,
                 null,
                 null,
-                null);
+                null,
+                null,
+                false);
     }
 
     public WorkspaceDestination(
@@ -60,6 +64,40 @@ public final class WorkspaceDestination {
             String routedSourceId,
             String routedSourceName,
             String routeId) {
+        this(
+                id,
+                name,
+                role,
+                deviceId,
+                ultraLowLatency,
+                deviceStatus,
+                signalPresent,
+                currentStreamId,
+                ipAddress,
+                location,
+                routedSourceId,
+                routedSourceName,
+                routeId,
+                null,
+                false);
+    }
+
+    public WorkspaceDestination(
+            String id,
+            String name,
+            SinkRole role,
+            String deviceId,
+            boolean ultraLowLatency,
+            DeviceOnlineStatus deviceStatus,
+            boolean signalPresent,
+            String currentStreamId,
+            String ipAddress,
+            String location,
+            String routedSourceId,
+            String routedSourceName,
+            String routeId,
+            String mosaicId,
+            boolean mosaic) {
         this.id = id;
         this.name = name;
         this.role = role;
@@ -73,6 +111,8 @@ public final class WorkspaceDestination {
         this.routedSourceId = routedSourceId;
         this.routedSourceName = routedSourceName;
         this.routeId = routeId;
+        this.mosaicId = mosaicId;
+        this.mosaic = mosaic;
     }
 
     public String getId() {
@@ -98,7 +138,29 @@ public final class WorkspaceDestination {
                 location,
                 sourceId,
                 sourceName,
-                routeId);
+                routeId,
+                null,
+                false);
+    }
+
+    public WorkspaceDestination withActiveMosaic(
+            String mosaicId, String mosaicLabel, String streamId, String routeId) {
+        return new WorkspaceDestination(
+                id,
+                name,
+                role,
+                deviceId,
+                ultraLowLatency,
+                deviceStatus,
+                true,
+                streamId != null ? streamId : currentStreamId,
+                ipAddress,
+                location,
+                mosaicId,
+                mosaicLabel,
+                routeId,
+                mosaicId,
+                true);
     }
 
     public Map<String, Object> toMap() {
@@ -116,6 +178,8 @@ public final class WorkspaceDestination {
         m.put("routedSourceId", routedSourceId);
         m.put("routedSourceName", routedSourceName);
         m.put("routeId", routeId);
+        m.put("mosaicId", mosaicId);
+        m.put("mosaic", mosaic);
         m.put("routed", routedSourceId != null);
         return m;
     }

@@ -13,6 +13,8 @@ public final class SurgeryWorkspace {
     private final List<WorkspaceSource> sources;
     private final List<WorkspaceDestination> destinations;
     private final List<Map<String, Object>> activeRoutes;
+    private final List<Map<String, Object>> activeMosaics;
+    private final List<Map<String, Object>> mosaicLayouts;
     private final Instant generatedAt;
 
     public SurgeryWorkspace(
@@ -20,7 +22,7 @@ public final class SurgeryWorkspace {
             OperatingRoom operatingRoom,
             List<WorkspaceSource> sources,
             List<WorkspaceDestination> destinations) {
-        this(surgeryCase, operatingRoom, sources, destinations, List.of());
+        this(surgeryCase, operatingRoom, sources, destinations, List.of(), List.of(), List.of());
     }
 
     public SurgeryWorkspace(
@@ -29,11 +31,24 @@ public final class SurgeryWorkspace {
             List<WorkspaceSource> sources,
             List<WorkspaceDestination> destinations,
             List<Map<String, Object>> activeRoutes) {
+        this(surgeryCase, operatingRoom, sources, destinations, activeRoutes, List.of(), List.of());
+    }
+
+    public SurgeryWorkspace(
+            SurgeryCase surgeryCase,
+            OperatingRoom operatingRoom,
+            List<WorkspaceSource> sources,
+            List<WorkspaceDestination> destinations,
+            List<Map<String, Object>> activeRoutes,
+            List<Map<String, Object>> activeMosaics,
+            List<Map<String, Object>> mosaicLayouts) {
         this.surgeryCase = surgeryCase;
         this.operatingRoom = operatingRoom;
         this.sources = List.copyOf(sources);
         this.destinations = List.copyOf(destinations);
         this.activeRoutes = List.copyOf(activeRoutes);
+        this.activeMosaics = List.copyOf(activeMosaics);
+        this.mosaicLayouts = List.copyOf(mosaicLayouts);
         this.generatedAt = Instant.now();
     }
 
@@ -70,6 +85,8 @@ public final class SurgeryWorkspace {
         m.put("sources", srcMaps);
         m.put("destinations", dstMaps);
         m.put("activeRoutes", activeRoutes);
+        m.put("activeMosaics", activeMosaics);
+        m.put("mosaicLayouts", mosaicLayouts);
         m.put("generatedAt", generatedAt.toString());
         return m;
     }

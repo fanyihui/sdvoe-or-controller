@@ -1,12 +1,14 @@
 package com.or.sdvoe.config;
 
 import com.or.sdvoe.discovery.SdvoeDiscoveryFactory;
+import com.or.sdvoe.persistence.MosaicRepository;
 import com.or.sdvoe.persistence.RouteRepository;
 import com.or.sdvoe.policy.PolicyEngine;
 import com.or.sdvoe.schedule.ScheduleRepository;
 import com.or.sdvoe.schedule.ScheduleService;
 import com.or.sdvoe.service.FabricOrchestrator;
 import com.or.sdvoe.service.SdvoeDeviceInventoryService;
+import com.or.sdvoe.workspace.MosaicService;
 import com.or.sdvoe.workspace.SurgeryWorkspaceService;
 import com.or.sdvoe.workspace.WorkspaceRoutingService;
 import org.slf4j.Logger;
@@ -48,6 +50,11 @@ public class OrDeskConfiguration {
     @Bean(destroyMethod = "close")
     public RouteRepository routeRepository(DatabaseSettings databaseSettings) {
         return new RouteRepository(databaseSettings);
+    }
+
+    @Bean(destroyMethod = "close")
+    public MosaicRepository mosaicRepository(DatabaseSettings databaseSettings) {
+        return new MosaicRepository(databaseSettings);
     }
 
     @Bean
@@ -116,22 +123,42 @@ public class OrDeskConfiguration {
     }
 
     @Bean
+    public MosaicService mosaicService(
+            OrControllerConfig config,
+            ScheduleService scheduleService,
+            SdvoeDeviceInventoryService deviceInventoryService,
+            FabricOrchestrator fabricOrchestrator,
+            WorkspaceRoutingService workspaceRoutingService,
+            MosaicRepository mosaicRepository) {
+        return new MosaicService(
+                config.getOperatingRoom().getId(),
+                scheduleService,
+                deviceInventoryService,
+                fabricOrchestrator,
+                workspaceRoutingService,
+                mosaicRepository);
+    }
+
+    @Bean
     public SurgeryWorkspaceService surgeryWorkspaceService(
             OrControllerConfig config,
             ScheduleService scheduleService,
             SdvoeDeviceInventoryService deviceInventoryService,
-            WorkspaceRoutingService workspaceRoutingService) {
+            WorkspaceRoutingService workspaceRoutingService,
+            MosaicService mosaicService) {
         return new SurgeryWorkspaceService(
                 config.getOperatingRoom(),
                 scheduleService,
                 deviceInventoryService,
-                workspaceRoutingService);
+                workspaceRoutingService,
+                mosaicService);
     }
 
     @Bean
     public ApplicationRunner restoreRoutesOnStartup(
             DatabaseSettings databaseSettings,
             WorkspaceRoutingService workspaceRoutingService,
+            MosaicService mosaicService,
             RouteRepository routeRepository,
             OrControllerConfig config) {
         return args -> {
@@ -140,15 +167,18 @@ public class OrDeskConfiguration {
                 return;
             }
             int[] stats = workspaceRoutingService.restorePersistedRoutes();
+            int[] mosaicStats = mosaicService.restorePersistedMosaics();
             log.info(
-                    "OR Desk Spring Boot ready | OR={} store={} remote={} backupDir={} restoredOk={} restoredFailed={} persisted={}",
+                    "OR Desk Spring Boot ready | OR={} store={} remote={} backupDir={} restoredOk={} restoredFailed={} persisted={} mosaicOk={} mosaicFailed={}",
                     config.getOperatingRoom().getId(),
                     routeRepository.storageLabel(),
                     databaseSettings.isRemoteServer(),
                     routeRepository.getBackupDir(),
                     stats[0],
                     stats[1],
-                    routeRepository.countByOr(config.getOperatingRoom().getId()));
+                    routeRepository.countByOr(config.getOperatingRoom().getId()),
+                    mosaicStats[0],
+                    mosaicStats[1]);
         };
     }
 }
