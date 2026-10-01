@@ -12,6 +12,7 @@ public final class SurgeryWorkspace {
     private final OperatingRoom operatingRoom;
     private final List<WorkspaceSource> sources;
     private final List<WorkspaceDestination> destinations;
+    private final List<Map<String, Object>> activeRoutes;
     private final Instant generatedAt;
 
     public SurgeryWorkspace(
@@ -19,10 +20,20 @@ public final class SurgeryWorkspace {
             OperatingRoom operatingRoom,
             List<WorkspaceSource> sources,
             List<WorkspaceDestination> destinations) {
+        this(surgeryCase, operatingRoom, sources, destinations, List.of());
+    }
+
+    public SurgeryWorkspace(
+            SurgeryCase surgeryCase,
+            OperatingRoom operatingRoom,
+            List<WorkspaceSource> sources,
+            List<WorkspaceDestination> destinations,
+            List<Map<String, Object>> activeRoutes) {
         this.surgeryCase = surgeryCase;
         this.operatingRoom = operatingRoom;
         this.sources = List.copyOf(sources);
         this.destinations = List.copyOf(destinations);
+        this.activeRoutes = List.copyOf(activeRoutes);
         this.generatedAt = Instant.now();
     }
 
@@ -58,6 +69,7 @@ public final class SurgeryWorkspace {
         }
         m.put("sources", srcMaps);
         m.put("destinations", dstMaps);
+        m.put("activeRoutes", activeRoutes);
         m.put("generatedAt", generatedAt.toString());
         return m;
     }

@@ -18,20 +18,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** 组装患者手术工作空间：病例 + 源 + 目的地（带设备实时状态）。 */
+/** 组装患者手术工作空间：病例 + 源 + 目的地（带设备实时状态与活动路由）。 */
 public class SurgeryWorkspaceService {
 
     private final OperatingRoom operatingRoom;
     private final ScheduleService scheduleService;
     private final SdvoeDeviceInventoryService deviceInventoryService;
+    private final WorkspaceRoutingService routingService;
 
     public SurgeryWorkspaceService(
             OperatingRoom operatingRoom,
             ScheduleService scheduleService,
-            SdvoeDeviceInventoryService deviceInventoryService) {
+            SdvoeDeviceInventoryService deviceInventoryService,
+            WorkspaceRoutingService routingService) {
         this.operatingRoom = Objects.requireNonNull(operatingRoom);
         this.scheduleService = Objects.requireNonNull(scheduleService);
         this.deviceInventoryService = Objects.requireNonNull(deviceInventoryService);
+        this.routingService = Objects.requireNonNull(routingService);
     }
 
     public SurgeryWorkspace getWorkspace(String caseId) {
@@ -59,10 +62,17 @@ public class SurgeryWorkspaceService {
                     device == null ? null : device.getLocation()));
         }
 
+        Map<String, ActiveRoute> routeByDest = new HashMap<>();
+        List<Map<String, Object>> activeRouteMaps = new ArrayList<>();
+        for (ActiveRoute route : routingService.listRoutes(caseId)) {
+            routeByDest.put(route.getDestinationId(), route);
+            activeRouteMaps.add(route.toMap());
+        }
+
         List<WorkspaceDestination> destinations = new ArrayList<>();
         for (ScheduleRepository.LogicalDestinationDef def : repo.getDestinations()) {
             SdvoeDevice device = byId.get(def.deviceId());
-            destinations.add(new WorkspaceDestination(
+            WorkspaceDestination base = new WorkspaceDestination(
                     def.id(),
                     def.name(),
                     def.role(),
@@ -72,9 +82,20 @@ public class SurgeryWorkspaceService {
                     device != null && device.isSignalPresent(),
                     device == null ? null : device.getStreamId(),
                     device == null ? null : device.getIpAddress(),
-                    device == null ? null : device.getLocation()));
+                    device == null ? null : device.getLocation());
+            ActiveRoute active = routeByDest.get(def.id());
+            if (active != null) {
+                destinations.add(base.withActiveRoute(
+                        active.getSourceId(),
+                        active.getSourceName(),
+                        active.getStreamId(),
+                        active.getRouteId()));
+            } else {
+                destinations.add(base);
+            }
         }
 
-        return new SurgeryWorkspace(surgeryCase, operatingRoom, sources, destinations);
+        return new SurgeryWorkspace(
+                surgeryCase, operatingRoom, sources, destinations, activeRouteMaps);
     }
 }

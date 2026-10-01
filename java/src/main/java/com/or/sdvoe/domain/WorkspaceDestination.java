@@ -15,6 +15,9 @@ public final class WorkspaceDestination {
     private final String currentStreamId;
     private final String ipAddress;
     private final String location;
+    private final String routedSourceId;
+    private final String routedSourceName;
+    private final String routeId;
 
     public WorkspaceDestination(
             String id,
@@ -27,6 +30,36 @@ public final class WorkspaceDestination {
             String currentStreamId,
             String ipAddress,
             String location) {
+        this(
+                id,
+                name,
+                role,
+                deviceId,
+                ultraLowLatency,
+                deviceStatus,
+                signalPresent,
+                currentStreamId,
+                ipAddress,
+                location,
+                null,
+                null,
+                null);
+    }
+
+    public WorkspaceDestination(
+            String id,
+            String name,
+            SinkRole role,
+            String deviceId,
+            boolean ultraLowLatency,
+            DeviceOnlineStatus deviceStatus,
+            boolean signalPresent,
+            String currentStreamId,
+            String ipAddress,
+            String location,
+            String routedSourceId,
+            String routedSourceName,
+            String routeId) {
         this.id = id;
         this.name = name;
         this.role = role;
@@ -37,6 +70,35 @@ public final class WorkspaceDestination {
         this.currentStreamId = currentStreamId;
         this.ipAddress = ipAddress;
         this.location = location;
+        this.routedSourceId = routedSourceId;
+        this.routedSourceName = routedSourceName;
+        this.routeId = routeId;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public WorkspaceDestination withActiveRoute(
+            String sourceId, String sourceName, String streamId, String routeId) {
+        return new WorkspaceDestination(
+                id,
+                name,
+                role,
+                deviceId,
+                ultraLowLatency,
+                deviceStatus,
+                true,
+                streamId != null ? streamId : currentStreamId,
+                ipAddress,
+                location,
+                sourceId,
+                sourceName,
+                routeId);
     }
 
     public Map<String, Object> toMap() {
@@ -51,6 +113,10 @@ public final class WorkspaceDestination {
         m.put("currentStreamId", currentStreamId);
         m.put("ipAddress", ipAddress);
         m.put("location", location);
+        m.put("routedSourceId", routedSourceId);
+        m.put("routedSourceName", routedSourceName);
+        m.put("routeId", routeId);
+        m.put("routed", routedSourceId != null);
         return m;
     }
 }

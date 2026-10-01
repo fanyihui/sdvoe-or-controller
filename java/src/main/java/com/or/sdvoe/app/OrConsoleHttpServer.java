@@ -5,12 +5,18 @@ import com.or.sdvoe.discovery.SdvoeDiscoveryFactory;
 import com.or.sdvoe.domain.SdvoeDeviceInventory;
 import com.or.sdvoe.domain.SdvoeDeviceRole;
 import com.or.sdvoe.domain.SurgeryWorkspace;
+import com.or.sdvoe.policy.PolicyEngine;
 import com.or.sdvoe.schedule.ScheduleRepository;
 import com.or.sdvoe.schedule.ScheduleService;
+import com.or.sdvoe.service.FabricOrchestrator;
 import com.or.sdvoe.service.SdvoeDeviceInventoryService;
+import com.or.sdvoe.workspace.ActiveRoute;
+import com.or.sdvoe.workspace.RouteConflictException;
 import com.or.sdvoe.workspace.SurgeryWorkspaceService;
+import com.or.sdvoe.workspace.WorkspaceRoutingService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,19 +26,19 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.Executors;
 
 /**
- * OR Desk 统一控制台：排班首页 API + 手术工作空间 API + 静态前端。
+ * OR Desk 统一控制台：排班、工作空间、拖拽路由 API + 静态前端。
  *
  * <pre>
- *   GET  /                         → web UI
- *   GET  /api/v1/or
- *   GET  /api/v1/or/schedule
- *   GET  /api/v1/or/cases/{id}
- *   GET  /api/v1/or/cases/{id}/workspace
- *   GET  /api/v1/or/sdvoe/devices
+ *   GET    /api/v1/or/schedule
+ *   GET    /api/v1/or/cases/{id}/workspace
+ *   POST   /api/v1/or/cases/{id}/routes
+ *   DELETE /api/v1/or/cases/{id}/routes/{destinationId}
  * </pre>
  */
 public final class OrConsoleHttpServer {
@@ -48,8 +54,12 @@ public final class OrConsoleHttpServer {
                 SdvoeDiscoveryFactory.create(config));
         ScheduleRepository scheduleRepo = loadSchedule();
         ScheduleService scheduleService = new ScheduleService(config.getOperatingRoom(), scheduleRepo);
-        SurgeryWorkspaceService workspaceService =
-                new SurgeryWorkspaceService(config.getOperatingRoom(), scheduleService, deviceService);
+        PolicyEngine policyEngine = loadPolicyEngine();
+        FabricOrchestrator orchestrator = WorkspaceRoutingService.createDefaultOrchestrator();
+        WorkspaceRoutingService routingService =
+                new WorkspaceRoutingService(scheduleService, deviceService, policyEngine, orchestrator);
+        SurgeryWorkspaceService workspaceService = new SurgeryWorkspaceService(
+                config.getOperatingRoom(), scheduleService, deviceService, routingService);
 
         Path webRoot = resolveWebRoot();
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
@@ -64,36 +74,8 @@ public final class OrConsoleHttpServer {
             writeJson(ex, 200, JsonUtil.toPrettyJson(scheduleService.listTodaySchedule()));
         });
 
-        server.createContext("/api/v1/or/cases", ex -> {
-            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
-                writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
-                return;
-            }
-            try {
-                String path = ex.getRequestURI().getPath();
-                // /api/v1/or/cases/{id} or /api/v1/or/cases/{id}/workspace
-                String rest = path.substring("/api/v1/or/cases".length());
-                if (rest.startsWith("/")) {
-                    rest = rest.substring(1);
-                }
-                if (rest.isBlank()) {
-                    writeJson(ex, 400, "{\"error\":\"case id required\"}");
-                    return;
-                }
-                String[] parts = rest.split("/");
-                String caseId = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
-                if (parts.length >= 2 && "workspace".equals(parts[1])) {
-                    SurgeryWorkspace workspace = workspaceService.getWorkspace(caseId);
-                    writeJson(ex, 200, JsonUtil.toPrettyJson(workspace.toMap()));
-                } else {
-                    writeJson(ex, 200, JsonUtil.toPrettyJson(scheduleService.getCase(caseId).toDetailMap()));
-                }
-            } catch (NoSuchElementException e) {
-                writeJson(ex, 404, "{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}");
-            } catch (Exception e) {
-                writeJson(ex, 500, "{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}");
-            }
-        });
+        server.createContext("/api/v1/or/cases", ex -> handleCases(
+                ex, scheduleService, workspaceService, routingService));
 
         server.createContext("/api/v1/or/sdvoe/devices", ex -> {
             if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -111,7 +93,7 @@ public final class OrConsoleHttpServer {
                 }
                 writeJson(ex, 200, JsonUtil.toPrettyJson(inventory.toMap()));
             } catch (Exception e) {
-                writeJson(ex, 400, "{\"error\":\"" + e.getMessage().replace("\"", "'") + "\"}");
+                writeJson(ex, 400, errorJson(e.getMessage()));
             }
         });
 
@@ -120,8 +102,6 @@ public final class OrConsoleHttpServer {
                 writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
                 return;
             }
-            // Avoid shadowing /api/v1/or/schedule etc. — HttpServer matches longest prefix,
-            // so more specific contexts win. This handles exact /api/v1/or.
             if (!"/api/v1/or".equals(ex.getRequestURI().getPath())) {
                 writeJson(ex, 404, "{\"error\":\"not found\"}");
                 return;
@@ -141,12 +121,142 @@ public final class OrConsoleHttpServer {
         System.out.printf(
                 "OR Desk console listening on http://127.0.0.1:%d%n"
                         + "  UI  /%n"
-                        + "  GET /api/v1/or/schedule%n"
-                        + "  GET /api/v1/or/cases/{id}/workspace%n"
+                        + "  GET  /api/v1/or/schedule%n"
+                        + "  GET  /api/v1/or/cases/{id}/workspace%n"
+                        + "  POST /api/v1/or/cases/{id}/routes%n"
                         + "  OR=%s (%s)%n",
                 port,
                 config.getOperatingRoom().getName(),
                 config.getOperatingRoom().getId());
+    }
+
+    private static void handleCases(
+            HttpExchange ex,
+            ScheduleService scheduleService,
+            SurgeryWorkspaceService workspaceService,
+            WorkspaceRoutingService routingService) throws IOException {
+        String method = ex.getRequestMethod();
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            ex.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+            ex.getResponseHeaders().add("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+            ex.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type");
+            ex.sendResponseHeaders(204, -1);
+            ex.close();
+            return;
+        }
+
+        try {
+            String path = ex.getRequestURI().getPath();
+            String rest = path.substring("/api/v1/or/cases".length());
+            if (rest.startsWith("/")) {
+                rest = rest.substring(1);
+            }
+            if (rest.isBlank()) {
+                writeJson(ex, 400, "{\"error\":\"case id required\"}");
+                return;
+            }
+            String[] parts = rest.split("/");
+            String caseId = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
+
+            if (parts.length >= 2 && "workspace".equals(parts[1])) {
+                if (!"GET".equalsIgnoreCase(method)) {
+                    writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                    return;
+                }
+                SurgeryWorkspace workspace = workspaceService.getWorkspace(caseId);
+                writeJson(ex, 200, JsonUtil.toPrettyJson(workspace.toMap()));
+                return;
+            }
+
+            if (parts.length >= 2 && "routes".equals(parts[1])) {
+                if ("GET".equalsIgnoreCase(method)) {
+                    writeJson(ex, 200, JsonUtil.toPrettyJson(Map.of(
+                            "caseId", caseId,
+                            "routes", routingService.listRoutes(caseId).stream()
+                                    .map(ActiveRoute::toMap)
+                                    .toList())));
+                    return;
+                }
+                if ("POST".equalsIgnoreCase(method)) {
+                    Map<String, Object> body = readJsonBody(ex);
+                    String sourceId = stringField(body, "sourceId");
+                    String destinationId = stringField(body, "destinationId");
+                    String operator = stringField(body, "operator");
+                    boolean confirmed = Boolean.TRUE.equals(body.get("confirmed"));
+                    if (sourceId == null || destinationId == null) {
+                        writeJson(ex, 400, "{\"error\":\"sourceId and destinationId required\"}");
+                        return;
+                    }
+                    try {
+                        ActiveRoute route = routingService.route(
+                                caseId, sourceId, destinationId, operator, confirmed);
+                        Map<String, Object> resp = new LinkedHashMap<>();
+                        resp.put("ok", true);
+                        resp.put("route", route.toMap());
+                        resp.put("workspace", workspaceService.getWorkspace(caseId).toMap());
+                        writeJson(ex, 200, JsonUtil.toPrettyJson(resp));
+                    } catch (RouteConflictException conflict) {
+                        Map<String, Object> resp = new LinkedHashMap<>();
+                        resp.put("ok", false);
+                        resp.put("conflict", true);
+                        resp.put("error", conflict.getMessage());
+                        resp.put("existing", conflict.getExisting().toMap());
+                        writeJson(ex, 409, JsonUtil.toPrettyJson(resp));
+                    }
+                    return;
+                }
+                if ("DELETE".equalsIgnoreCase(method)) {
+                    if (parts.length < 3) {
+                        writeJson(ex, 400, "{\"error\":\"destinationId required\"}");
+                        return;
+                    }
+                    String destinationId = URLDecoder.decode(parts[2], StandardCharsets.UTF_8);
+                    routingService.clearRoute(caseId, destinationId);
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("ok", true);
+                    resp.put("workspace", workspaceService.getWorkspace(caseId).toMap());
+                    writeJson(ex, 200, JsonUtil.toPrettyJson(resp));
+                    return;
+                }
+                writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+
+            if ("GET".equalsIgnoreCase(method)) {
+                writeJson(ex, 200, JsonUtil.toPrettyJson(scheduleService.getCase(caseId).toDetailMap()));
+                return;
+            }
+            writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+        } catch (NoSuchElementException e) {
+            writeJson(ex, 404, errorJson(e.getMessage()));
+        } catch (IllegalStateException e) {
+            writeJson(ex, 422, errorJson(e.getMessage()));
+        } catch (Exception e) {
+            writeJson(ex, 500, errorJson(e.getMessage()));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> readJsonBody(HttpExchange ex) throws IOException {
+        String raw = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8).trim();
+        if (raw.isEmpty()) {
+            return Map.of();
+        }
+        Object loaded = new Yaml().load(raw);
+        if (loaded instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private static String stringField(Map<String, Object> body, String key) {
+        Object v = body.get(key);
+        return v == null ? null : v.toString();
+    }
+
+    private static String errorJson(String message) {
+        String safe = message == null ? "error" : message.replace("\"", "'");
+        return "{\"error\":\"" + safe + "\"}";
     }
 
     private static void serveStatic(HttpExchange ex, Path webRoot) throws IOException {
@@ -159,13 +269,11 @@ public final class OrConsoleHttpServer {
         if (reqPath == null || reqPath.isBlank() || "/".equals(reqPath)) {
             reqPath = "/index.html";
         }
-        // SPA fallback for /workspace/...
         if (reqPath.startsWith("/workspace")) {
             reqPath = "/index.html";
         }
         Path resolved = webRoot.resolve("." + reqPath).normalize();
         if (!resolved.startsWith(webRoot) || !Files.isRegularFile(resolved)) {
-            // try classpath web/
             String classpathPath = "web" + (reqPath.startsWith("/") ? reqPath : "/" + reqPath);
             InputStream in = OrConsoleHttpServer.class.getClassLoader().getResourceAsStream(classpathPath);
             if (in == null && reqPath.startsWith("/workspace")) {
@@ -189,6 +297,8 @@ public final class OrConsoleHttpServer {
         }
         byte[] bytes = Files.readAllBytes(resolved);
         ex.getResponseHeaders().add("Content-Type", contentType(reqPath));
+        // Avoid stale UI during development
+        ex.getResponseHeaders().add("Cache-Control", "no-store");
         ex.sendResponseHeaders(200, bytes.length);
         if (!"HEAD".equalsIgnoreCase(ex.getRequestMethod())) {
             try (OutputStream os = ex.getResponseBody()) {
@@ -242,6 +352,23 @@ public final class OrConsoleHttpServer {
         return ScheduleRepository.loadClasspath("schedule.yaml");
     }
 
+    private static PolicyEngine loadPolicyEngine() {
+        Path local = Path.of("config/routing-policies.yaml");
+        if (Files.isRegularFile(local)) {
+            return new PolicyEngine(local);
+        }
+        Path sibling = Path.of("../config/routing-policies.yaml");
+        if (Files.isRegularFile(sibling)) {
+            return new PolicyEngine(sibling);
+        }
+        InputStream in = OrConsoleHttpServer.class.getClassLoader()
+                .getResourceAsStream("routing-policies.yaml");
+        if (in == null) {
+            throw new IllegalStateException("routing-policies.yaml not found");
+        }
+        return new PolicyEngine(in);
+    }
+
     private static Path resolveWebRoot() {
         Path p1 = Path.of("web").toAbsolutePath().normalize();
         if (Files.isDirectory(p1)) {
@@ -251,7 +378,6 @@ public final class OrConsoleHttpServer {
         if (Files.isDirectory(p2)) {
             return p2;
         }
-        // fallback: empty dir under target — classpath serving still works
         return p1;
     }
 

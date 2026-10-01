@@ -126,18 +126,28 @@ config/schedule.yaml
 
 ---
 
-## 7. 状态与交互（首期）
+## 7. 拖拽路由（已实现）
 
-- 排班数据：YAML / HIS 适配器（首期 YAML mock）  
-- 选中手术 → 进入工作空间 → 拉取 workspace  
-- 源/目的地状态：在线、有无信号，来自设备发现  
-- 路由切换：预留按钮与 API，下期接入 `RouteService`
+工作空间内：**拖拽视频源卡片 → 放到输出目的地**。
+
+| Method | Path | 说明 |
+|--------|------|------|
+| POST | `/api/v1/or/cases/{id}/routes` | body: `{sourceId, destinationId, confirmed?, operator?}` |
+| DELETE | `/api/v1/or/cases/{id}/routes/{destinationId}` | 清除该目的地路由 |
+| GET | `/api/v1/or/cases/{id}/routes` | 当前活动路由列表 |
+
+行为：
+
+1. 策略引擎按源类型给出 Matrix/SDVoE 偏好（写入 `policyReason`）  
+2. 经 `SDVoEAdapter` 下发 `set_stream` + `subscribe`  
+3. 目的地已被占用时返回 **409**，前端确认后 `confirmed=true` 覆盖  
+4. `workspace.destinations[].routedSourceName` 展示当前路由  
 
 ---
 
 ## 8. 演进
 
-1. **P0（本迭代）**：排班首页 + 工作空间只读聚合 + 前端原型  
-2. **P1**：工作空间内点选源→目的地完成路由  
+1. **P0**：排班首页 + 工作空间聚合 + 前端原型  
+2. **P1（本迭代）**：工作空间拖拽源→目的地完成路由  
 3. **P2**：场景预设（开台/示教）、主屏锁定、与 HIS 排班同步  
 4. **P3**：跨室示教、录播联动、审计回放

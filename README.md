@@ -25,7 +25,14 @@ mvn -q compile exec:java -Dexec.mainClass=com.or.sdvoe.app.OrConsoleHttpServer -
 ```bash
 curl -s http://127.0.0.1:8080/api/v1/or/schedule
 curl -s http://127.0.0.1:8080/api/v1/or/cases/case-20261001-001/workspace
+
+# 拖拽路由（API）
+curl -s -X POST http://127.0.0.1:8080/api/v1/or/cases/case-20261001-001/routes \
+  -H 'Content-Type: application/json' \
+  -d '{"sourceId":"src-endo","destinationId":"dst-boom-main"}'
 ```
+
+工作空间 UI：将视频源拖到输出目的地即可建立路由；冲突时确认覆盖。
 
 设备清单 CLI：
 
