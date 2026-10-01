@@ -10,24 +10,13 @@ Controller 启动后，能按 **当前手术室（operating_room.id）** 拉取�
 
 ```bash
 cd java
-mvn -q compile exec:java
-# 或指定主类
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
-
-# 仅 Encoder
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp -Dexec.args="--role ENCODER"
-
-# JSON
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp -Dexec.args="--json"
-```
-
-### HTTP API
-
-```bash
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.OrInventoryHttpServer -Dexec.args="8080"
-
+# Spring Boot 服务启动后：
 curl -s http://127.0.0.1:8080/api/v1/or/sdvoe/devices
 curl -s 'http://127.0.0.1:8080/api/v1/or/sdvoe/devices?role=DECODER'
+
+# 可选 CLI
+mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
+mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp -Dexec.args="--role ENCODER --json"
 ```
 
 ## 发现模式（`or-controller.yaml`）
