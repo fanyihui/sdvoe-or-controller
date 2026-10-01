@@ -1,5 +1,6 @@
 package com.or.sdvoe.app;
 
+import com.or.sdvoe.config.DatabaseSettings;
 import com.or.sdvoe.config.OrControllerConfig;
 import com.or.sdvoe.discovery.SdvoeDiscoveryFactory;
 import com.or.sdvoe.domain.SdvoeDeviceInventory;
@@ -58,8 +59,8 @@ public final class OrConsoleHttpServer {
         PolicyEngine policyEngine = loadPolicyEngine();
         FabricOrchestrator orchestrator = WorkspaceRoutingService.createDefaultOrchestrator();
 
-        Path dbPath = resolveDatabasePath(config.getDatabasePath());
-        RouteRepository routeRepository = new RouteRepository(dbPath);
+        DatabaseSettings dbSettings = resolveDatabaseSettings(config.getDatabaseSettings());
+        RouteRepository routeRepository = new RouteRepository(dbSettings);
         Runtime.getRuntime().addShutdownHook(new Thread(routeRepository::close));
 
         WorkspaceRoutingService routingService = new WorkspaceRoutingService(
@@ -73,7 +74,7 @@ public final class OrConsoleHttpServer {
                 config.getOperatingRoom(), scheduleService, deviceService, routingService);
 
         int[] restoreStats = new int[] {0, 0};
-        if (config.isRestoreRoutesOnStartup()) {
+        if (dbSettings.isRestoreRoutesOnStartup()) {
             restoreStats = routingService.restorePersistedRoutes();
         }
 
@@ -82,14 +83,64 @@ public final class OrConsoleHttpServer {
 
         final int restoredOk = restoreStats[0];
         final int restoredFail = restoreStats[1];
+        String orId = config.getOperatingRoom().getId();
         server.createContext("/health", ex -> {
             Map<String, Object> health = new LinkedHashMap<>();
             health.put("status", "ok");
-            health.put("database", dbPath.toString());
-            health.put("persistedRoutes", routeRepository.countByOr(config.getOperatingRoom().getId()));
+            health.put("store", routeRepository.storageLabel());
+            health.put("remoteServer", dbSettings.isRemoteServer());
+            health.put("backupDir", routeRepository.getBackupDir().toString());
+            health.put("persistedRoutes", routeRepository.countByOr(orId));
             health.put("restoredOk", restoredOk);
             health.put("restoredFailed", restoredFail);
             writeJson(ex, 200, JsonUtil.toPrettyJson(health));
+        });
+
+        server.createContext("/api/v1/or/routes/export", ex -> {
+            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+            writeJson(ex, 200, JsonUtil.toPrettyJson(routeRepository.exportBundle(orId)));
+        });
+
+        server.createContext("/api/v1/or/routes/backup", ex -> {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+            try {
+                Path backup = routeRepository.createBackup(orId);
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("ok", true);
+                body.put("backup", backup.toString());
+                body.put("backupDir", routeRepository.getBackupDir().toString());
+                writeJson(ex, 200, JsonUtil.toPrettyJson(body));
+            } catch (Exception e) {
+                writeJson(ex, 500, errorJson(e.getMessage()));
+            }
+        });
+
+        server.createContext("/api/v1/or/routes/import", ex -> {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                writeJson(ex, 405, "{\"error\":\"method not allowed\"}");
+                return;
+            }
+            try {
+                Map<String, Object> bundle = readJsonBody(ex);
+                int imported = routeRepository.importBundle(orId, bundle);
+                // re-apply into runtime fabric after import
+                int[] stats = routingService.restorePersistedRoutes();
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("ok", true);
+                body.put("imported", imported);
+                body.put("restoredOk", stats[0]);
+                body.put("restoredFailed", stats[1]);
+                body.put("routes", routingService.listAllRoutes().stream().map(ActiveRoute::toMap).toList());
+                writeJson(ex, 200, JsonUtil.toPrettyJson(body));
+            } catch (Exception e) {
+                writeJson(ex, 400, errorJson(e.getMessage()));
+            }
         });
 
         server.createContext("/api/v1/or/routes", ex -> {
@@ -98,8 +149,10 @@ public final class OrConsoleHttpServer {
                 return;
             }
             Map<String, Object> body = new LinkedHashMap<>();
-            body.put("orId", config.getOperatingRoom().getId());
-            body.put("database", dbPath.toString());
+            body.put("orId", orId);
+            body.put("store", routeRepository.storageLabel());
+            body.put("remoteServer", dbSettings.isRemoteServer());
+            body.put("backupDir", routeRepository.getBackupDir().toString());
             body.put("routes", routingService.listAllRoutes().stream().map(ActiveRoute::toMap).toList());
             writeJson(ex, 200, JsonUtil.toPrettyJson(body));
         });
@@ -162,21 +215,63 @@ public final class OrConsoleHttpServer {
                         + "  GET  /api/v1/or/cases/{id}/workspace%n"
                         + "  POST /api/v1/or/cases/{id}/routes%n"
                         + "  GET  /api/v1/or/routes%n"
-                        + "  DB  %s%n"
+                        + "  GET  /api/v1/or/routes/export%n"
+                        + "  POST /api/v1/or/routes/backup%n"
+                        + "  Store %s (remote=%s)%n"
+                        + "  BackupDir %s%n"
                         + "  Restore ok=%d failed=%d%n"
                         + "  OR=%s (%s)%n",
                 port,
-                dbPath,
+                routeRepository.storageLabel(),
+                dbSettings.isRemoteServer(),
+                routeRepository.getBackupDir(),
                 restoredOk,
                 restoredFail,
                 config.getOperatingRoom().getName(),
                 config.getOperatingRoom().getId());
     }
 
-    private static Path resolveDatabasePath(String configured) {
-        String override = System.getenv("OR_DESK_DB");
-        Path path = Path.of(override != null && !override.isBlank() ? override : configured);
-        return path.toAbsolutePath().normalize();
+    private static DatabaseSettings resolveDatabaseSettings(DatabaseSettings base) {
+        String typeEnv = System.getenv("OR_DESK_DB_TYPE");
+        String pathEnv = System.getenv("OR_DESK_DB");
+        String jdbcEnv = System.getenv("OR_DESK_JDBC_URL");
+        String userEnv = System.getenv("OR_DESK_DB_USER");
+        String passEnv = System.getenv("OR_DESK_DB_PASSWORD");
+        String backupEnv = System.getenv("OR_DESK_BACKUP_DIR");
+
+        DatabaseSettings.Type type = base.getType();
+        if (typeEnv != null && !typeEnv.isBlank()) {
+            type = switch (typeEnv.trim().toLowerCase()) {
+                case "postgres", "postgresql", "pg" -> DatabaseSettings.Type.POSTGRES;
+                case "jdbc" -> DatabaseSettings.Type.JDBC;
+                default -> DatabaseSettings.Type.SQLITE;
+            };
+        } else if (jdbcEnv != null && !jdbcEnv.isBlank()) {
+            type = jdbcEnv.toLowerCase().contains("postgres")
+                    ? DatabaseSettings.Type.POSTGRES
+                    : DatabaseSettings.Type.JDBC;
+        }
+
+        String path = pathEnv != null && !pathEnv.isBlank() ? pathEnv : base.getPath();
+        if (type == DatabaseSettings.Type.SQLITE) {
+            path = Path.of(path).toAbsolutePath().normalize().toString();
+        }
+        String jdbcUrl = jdbcEnv != null && !jdbcEnv.isBlank() ? jdbcEnv : base.getJdbcUrl();
+        String username = userEnv != null ? userEnv : base.getUsername();
+        String password = passEnv != null ? passEnv : base.getPassword();
+        String backupDir = backupEnv != null && !backupEnv.isBlank()
+                ? Path.of(backupEnv).toAbsolutePath().normalize().toString()
+                : Path.of(base.getBackupDir()).toAbsolutePath().normalize().toString();
+
+        return new DatabaseSettings(
+                type,
+                path,
+                jdbcUrl,
+                username,
+                password,
+                base.isRestoreRoutesOnStartup(),
+                base.isAutoBackup(),
+                backupDir);
     }
 
     private static void handleCases(

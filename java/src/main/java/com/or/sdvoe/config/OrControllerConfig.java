@@ -23,8 +23,7 @@ public final class OrControllerConfig {
     private final String discoveryMode;
     private final String managerBaseUrl;
     private final List<SdvoeDevice> inventoryDevices;
-    private final String databasePath;
-    private final boolean restoreRoutesOnStartup;
+    private final DatabaseSettings databaseSettings;
 
     @SuppressWarnings("unchecked")
     private OrControllerConfig(Map<String, Object> root) {
@@ -49,10 +48,7 @@ public final class OrControllerConfig {
             devices.add(parseDevice(raw, this.operatingRoom.getId()));
         }
         this.inventoryDevices = List.copyOf(devices);
-
-        Map<String, Object> database = (Map<String, Object>) root.getOrDefault("database", Map.of());
-        this.databasePath = Objects.toString(database.getOrDefault("path", "data/or-desk.db"));
-        this.restoreRoutesOnStartup = !Boolean.FALSE.equals(database.get("restore_routes_on_startup"));
+        this.databaseSettings = DatabaseSettings.fromRoot(root);
     }
 
     public static OrControllerConfig load(Path path) {
@@ -144,11 +140,17 @@ public final class OrControllerConfig {
         return Collections.unmodifiableList(filtered);
     }
 
+    public DatabaseSettings getDatabaseSettings() {
+        return databaseSettings;
+    }
+
+    /** @deprecated use {@link #getDatabaseSettings()} */
+    @Deprecated
     public String getDatabasePath() {
-        return databasePath;
+        return databaseSettings.getPath();
     }
 
     public boolean isRestoreRoutesOnStartup() {
-        return restoreRoutesOnStartup;
+        return databaseSettings.isRestoreRoutesOnStartup();
     }
 }
