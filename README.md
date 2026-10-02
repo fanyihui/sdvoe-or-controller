@@ -1,44 +1,44 @@
 # SDVoE OR Controller
 
-手术室 **SDVoE + 视频矩阵** 统一路由控制框架。
-
-首个应用：获取本手术室内全部 SDVoE 设备清单。
+手术室 **SDVoE + 视频矩阵** 统一路由控制框架（**Spring Boot 3**）。
 
 ## Features
 
-- 统一领域模型（Source / Sink / Route / Scene）
-- Matrix / SDVoE / Bridge 适配器抽象
-- 按视频源类型选择 Matrix 或 SDVoE 的策略引擎
-- **应用 1**：本手术室 SDVoE 设备清单（CLI + HTTP API）
+- Spring Boot Web API + OR Desk 前端
+- 首页：当日手术排班；工作空间：患者信息 / 视频源 / 输出目的地
+- 拖拽路由 + 服务端持久化（SQLite / PostgreSQL）+ 启动自动恢复
+- 多源拼屏：2×2 / 4×4 / 1+3 等布局，合成后推送到目的地
 
-## Quick start (Java)
+## Quick start
 
 ```bash
 cd java
-mvn -q compile exec:java -Dexec.mainClass=com.or.sdvoe.app.ListOrSdvoeDevicesApp
+mvn -q spring-boot:run
+# http://127.0.0.1:8080
 ```
 
-HTTP API:
-
 ```bash
-mvn -q exec:java -Dexec.mainClass=com.or.sdvoe.app.OrInventoryHttpServer -Dexec.args="8080"
-curl -s http://127.0.0.1:8080/api/v1/or/sdvoe/devices
+curl -s http://127.0.0.1:8080/health
+curl -s http://127.0.0.1:8080/api/v1/or/schedule
 ```
 
 ## Layout
 
 | Path | Description |
 |------|-------------|
-| `java/` | Java 21 Maven 主工程（推荐） |
-| `docs/` | 架构与策略设计 |
-| `config/` | 路由策略与手术室配置 |
+| `java/` | Spring Boot 主工程 |
+| `web/` | 前端源码（同时打包到 `classpath:/static/`） |
+| `docs/` | 架构与应用框架设计 |
+| `config/` | 业务 YAML 副本 |
 | `src/` / `examples/` | 早期 Python 对照骨架 |
 
 ## Docs
 
+- [Spring Boot](java/docs/SPRING_BOOT.md)
+- [多源拼屏](java/docs/MOSAIC.md)
+- [App framework](docs/APP_FRAMEWORK.md)
+- [Server route store](java/docs/ROUTE_SERVER_STORE.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [App1: SDVoE device inventory](java/docs/APP1_DEVICE_INVENTORY.md)
-- [Policy flow](docs/POLICY_FLOW.md)
 
 ## License
 

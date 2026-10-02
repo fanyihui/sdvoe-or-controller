@@ -1,0 +1,143 @@
+# 本手术室当日排班（演示数据，后续可接 HIS）
+
+operating_room_id: OR-01
+date: "2026-10-01"
+
+cases:
+  - id: case-20261001-001
+    status: IN_PROGRESS
+    scheduled_start: "08:30"
+    scheduled_end: "10:00"
+    actual_start: "08:36"
+    procedure: 腹腔镜胆囊切除术
+    procedure_code: LC
+    department: 普外科
+    surgeon: 李明轩
+    anesthetist: 王芳
+    scrub_nurse: 赵敏
+    circulating_nurse: 陈静
+    room_side: left
+    notes: 患者对青霉素过敏，术中需录像存档
+    patient:
+      id: P-100861
+      name: 张伟
+      gender: 男
+      age: 52
+      bed: "3F-12"
+      blood_type: "A+"
+      allergies:
+        - 青霉素
+      diagnosis: 胆囊结石伴慢性胆囊炎
+
+  - id: case-20261001-002
+    status: SCHEDULED
+    scheduled_start: "10:30"
+    scheduled_end: "12:30"
+    procedure: 关节镜膝关节清理术
+    procedure_code: ASK
+    department: 骨科
+    surgeon: 周强
+    anesthetist: 刘洋
+    scrub_nurse: 孙丽
+    circulating_nurse: 陈静
+    notes: 需接入导航视频
+    patient:
+      id: P-100874
+      name: 刘洋
+      gender: 男
+      age: 34
+      bed: "3F-08"
+      blood_type: "O+"
+      allergies: []
+      diagnosis: 左膝半月板损伤
+
+  - id: case-20261001-003
+    status: SCHEDULED
+    scheduled_start: "13:30"
+    scheduled_end: "16:00"
+    procedure: 腹腔镜子宫肌瘤剔除术
+    procedure_code: LM
+    department: 妇科
+    surgeon: 韩雪
+    anesthetist: 王芳
+    scrub_nurse: 赵敏
+    circulating_nurse: 马超
+    notes: 示教手术，需推送到示教室
+    patient:
+      id: P-100902
+      name: 陈秀英
+      gender: 女
+      age: 41
+      bed: "4F-03"
+      blood_type: "B+"
+      allergies:
+        - 碘造影剂
+      diagnosis: 子宫多发肌瘤
+
+  - id: case-20261001-004
+    status: DONE
+    scheduled_start: "07:00"
+    scheduled_end: "08:15"
+    actual_start: "07:05"
+    actual_end: "08:10"
+    procedure: 腹股沟疝无张力修补术
+    procedure_code: LIHR
+    department: 普外科
+    surgeon: 李明轩
+    anesthetist: 刘洋
+    scrub_nurse: 孙丽
+    circulating_nurse: 陈静
+    notes: 已完成，设备已复位
+    patient:
+      id: P-100845
+      name: 王建国
+      gender: 男
+      age: 67
+      bed: "3F-15"
+      blood_type: "AB+"
+      allergies: []
+      diagnosis: 右侧腹股沟疝
+
+# 本室逻辑视频源（与 SDVoE/矩阵端点映射）
+logical_sources:
+  - id: src-endo
+    name: 腔镜主输出
+    source_type: ENDOSCOPE
+    device_id: enc-endo-01
+    critical: true
+  - id: src-cam
+    name: 术野摄像机
+    source_type: SURGICAL_CAM
+    device_id: enc-cam-02
+  - id: src-us
+    name: 超声
+    source_type: ULTRASOUND
+    device_id: enc-us-03
+  - id: src-pacs
+    name: PACS 工作站
+    source_type: PACS_WORKSTATION
+    device_id: enc-pacs-04
+
+# 本室逻辑输出目的地
+logical_destinations:
+  - id: dst-boom-main
+    name: 主吊臂显示
+    role: PRIMARY_SURGEON_DISPLAY
+    device_id: dec-boom-01
+    ultra_low_latency: true
+  - id: dst-boom-aux
+    name: 辅吊臂显示
+    role: SECONDARY_DISPLAY
+    device_id: dec-boom-02
+  - id: dst-wall-l
+    name: 左侧墙显
+    role: WALL_DISPLAY
+    device_id: dec-wall-l
+  - id: dst-wall-r
+    name: 右侧墙显
+    role: WALL_DISPLAY
+    device_id: dec-wall-r
+  - id: dst-recorder
+    name: 录播输入
+    role: RECORDER
+    device_id: dec-rec-01
