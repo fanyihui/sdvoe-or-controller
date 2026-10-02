@@ -1,6 +1,7 @@
 package com.or.sdvoe.web;
 
 import com.or.sdvoe.workspace.MosaicConflictException;
+import com.or.sdvoe.workspace.RecordingConflictException;
 import com.or.sdvoe.workspace.RouteConflictException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,6 +34,16 @@ public class ApiExceptionHandler {
         body.put("existingKind", ex.getExistingKind());
         body.put("destinationId", ex.getDestinationId());
         body.put("existing", ex.getExisting());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    @ExceptionHandler(RecordingConflictException.class)
+    public ResponseEntity<Map<String, Object>> recordingConflict(RecordingConflictException ex) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", false);
+        body.put("conflict", true);
+        body.put("error", ex.getMessage());
+        body.put("existing", ex.getExisting().toMap());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 

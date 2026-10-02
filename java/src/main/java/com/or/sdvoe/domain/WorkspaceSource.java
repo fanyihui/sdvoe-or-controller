@@ -39,6 +39,22 @@ public final class WorkspaceSource {
         this.location = location;
     }
 
+    public String getId() {
+        return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public DeviceOnlineStatus getDeviceStatus() {
+        return deviceStatus;
+    }
+
+    public boolean isSignalPresent() {
+        return signalPresent;
+    }
+
     public Map<String, Object> toMap() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("id", id);
@@ -51,6 +67,19 @@ public final class WorkspaceSource {
         m.put("streamId", streamId);
         m.put("ipAddress", ipAddress);
         m.put("location", location);
+        m.put("recording", false);
+        m.put("recordable", deviceStatus == DeviceOnlineStatus.ONLINE && signalPresent);
+        return m;
+    }
+
+    public Map<String, Object> toMap(boolean recording, boolean anotherRecordingActive) {
+        Map<String, Object> m = toMap();
+        m.put("recording", recording);
+        boolean recordable = deviceStatus == DeviceOnlineStatus.ONLINE && signalPresent && !anotherRecordingActive;
+        if (recording) {
+            recordable = false;
+        }
+        m.put("recordable", recordable);
         return m;
     }
 }

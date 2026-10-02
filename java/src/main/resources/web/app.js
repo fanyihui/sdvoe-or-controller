@@ -124,6 +124,7 @@ function paintWorkspace(caseId, ws) {
   const activeRoutes = ws.activeRoutes || [];
   const activeMosaics = ws.activeMosaics || [];
   const mosaicLayouts = ws.mosaicLayouts || [];
+  const activeRecording = ws.activeRecording || null;
 
   app.innerHTML = `
     <div class="toast" id="toast" hidden></div>
@@ -142,7 +143,8 @@ function paintWorkspace(caseId, ws) {
         <div>路由 ${activeRoutes.length} · 拼屏 ${activeMosaics.length}</div>
       </div>
     </div>
-    <p class="drag-hint">将左侧 <strong>视频源</strong> 拖到右侧 <strong>输出目的地</strong> 完成单路路由；下方可配置多源拼屏并推送到目标。</p>
+    ${recordingBarHtml(activeRecording)}
+    <p class="drag-hint">将左侧 <strong>视频源</strong> 拖到右侧 <strong>输出目的地</strong> 完成单路路由；源卡片可<strong>录制</strong>；下方可配置多源拼屏。</p>
     <div class="ws-grid">
       <section class="panel" aria-label="患者与手术信息">
         <h3>患者与手术信息</h3>
@@ -163,7 +165,7 @@ function paintWorkspace(caseId, ws) {
         </dl>
       </section>
       <section class="panel" aria-label="视频源">
-        <h3>视频源 <span class="panel-note">可拖拽</span></h3>
+        <h3>视频源 <span class="panel-note">拖拽 / 录制</span></h3>
         <div class="endpoint-list" id="sourceList">
           ${sources.map(sourceCard).join("") || emptyHint("暂无配置视频源")}
         </div>
@@ -185,6 +187,7 @@ function paintWorkspace(caseId, ws) {
 
   bindDragRouting(caseId);
   bindMosaicUi(caseId, ws);
+  bindRecordingUi(caseId, activeRecording);
 }
 
 function bindDragRouting(caseId) {

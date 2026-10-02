@@ -8,6 +8,9 @@ public class OrDeskProperties {
     private String configResource = "or-controller.yaml";
     private String scheduleResource = "schedule.yaml";
     private String policyResource = "routing-policies.yaml";
+    /** 软件录制输出目录（P0 stub 写占位文件）。 */
+    private String recordingOutputDir = "data/recordings";
+    private String recordingWorkerId = "software-recorder-stub";
 
     public String getConfigResource() {
         return configResource;
@@ -31,5 +34,21 @@ public class OrDeskProperties {
 
     public void setPolicyResource(String policyResource) {
         this.policyResource = policyResource;
+    }
+
+    public String getRecordingOutputDir() {
+        return recordingOutputDir;
+    }
+
+    public void setRecordingOutputDir(String recordingOutputDir) {
+        this.recordingOutputDir = recordingOutputDir;
+    }
+
+    public String getRecordingWorkerId() {
+        return recordingWorkerId;
+    }
+
+    public void setRecordingWorkerId(String recordingWorkerId) {
+        this.recordingWorkerId = recordingWorkerId;
     }
 }

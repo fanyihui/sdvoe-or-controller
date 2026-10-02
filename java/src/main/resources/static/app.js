@@ -124,6 +124,7 @@ function paintWorkspace(caseId, ws) {
   const activeRoutes = ws.activeRoutes || [];
   const activeMosaics = ws.activeMosaics || [];
   const mosaicLayouts = ws.mosaicLayouts || [];
+  const activeRecording = ws.activeRecording || null;
 
   app.innerHTML = `
     <div class="toast" id="toast" hidden></div>
@@ -142,7 +143,8 @@ function paintWorkspace(caseId, ws) {
         <div>路由 ${activeRoutes.length} · 拼屏 ${activeMosaics.length}</div>
       </div>
     </div>
-    <p class="drag-hint">将左侧 <strong>视频源</strong> 拖到右侧 <strong>输出目的地</strong> 完成单路路由；下方可配置多源拼屏并推送到目标。</p>
+    ${recordingBarHtml(activeRecording)}
+    <p class="drag-hint">将左侧 <strong>视频源</strong> 拖到右侧 <strong>输出目的地</strong> 完成单路路由；源卡片可<strong>录制</strong>；下方可配置多源拼屏。</p>
     <div class="ws-grid">
       <section class="panel" aria-label="患者与手术信息">
         <h3>患者与手术信息</h3>
@@ -163,7 +165,7 @@ function paintWorkspace(caseId, ws) {
         </dl>
       </section>
       <section class="panel" aria-label="视频源">
-        <h3>视频源 <span class="panel-note">可拖拽</span></h3>
+        <h3>视频源 <span class="panel-note">拖拽 / 录制</span></h3>
         <div class="endpoint-list" id="sourceList">
           ${sources.map(sourceCard).join("") || emptyHint("暂无配置视频源")}
         </div>
@@ -185,6 +187,7 @@ function paintWorkspace(caseId, ws) {
 
   bindDragRouting(caseId);
   bindMosaicUi(caseId, ws);
+  bindRecordingUi(caseId, activeRecording);
 }
 
 function bindDragRouting(caseId) {
@@ -285,9 +288,11 @@ function allergyHtml(allergies) {
 function sourceCard(s) {
   const online = s.deviceStatus === "ONLINE";
   const canDrag = online;
+  const recording = !!s.recording;
+  const recordable = !!s.recordable;
   return `
     <article
-      class="endpoint source ${s.critical ? "critical" : ""} ${canDrag ? "" : "disabled"}"
+      class="endpoint source ${s.critical ? "critical" : ""} ${canDrag ? "" : "disabled"} ${recording ? "is-recording" : ""}"
       draggable="${canDrag ? "true" : "false"}"
       data-source-id="${escapeHtml(s.id)}"
       title="${canDrag ? "拖到右侧目的地完成路由" : "设备离线，无法路由"}"
@@ -301,9 +306,107 @@ function sourceCard(s) {
         <span class="flag ${online ? "ok" : "off"}">${escapeHtml(s.deviceStatus || "UNKNOWN")}</span>
         <span class="flag ${s.signalPresent ? "signal" : ""}">${s.signalPresent ? "有信号" : "无信号"}</span>
         ${canDrag ? `<span class="flag drag">拖拽</span>` : ""}
+        ${
+          recording
+            ? `<button type="button" class="btn-rec stop" data-stop-recording="1">停止录制</button>`
+            : recordable
+              ? `<button type="button" class="btn-rec" data-start-recording="${escapeHtml(s.id)}">录制</button>`
+              : online
+                ? `<button type="button" class="btn-rec" disabled title="当前不可录制">录制</button>`
+                : ""
+        }
       </div>
     </article>
   `;
+}
+
+function recordingBarHtml(rec) {
+  if (!rec || !rec.active) return "";
+  const elapsed = formatElapsed(rec.elapsedSec || 0);
+  return `
+    <div class="recording-bar" id="recordingBar">
+      <span class="rec-dot" aria-hidden="true"></span>
+      <strong>录制中</strong>
+      <span>${escapeHtml(rec.sourceName || rec.sourceId || "")}</span>
+      <span class="rec-timer" data-started-at="${escapeHtml(rec.startedAt || "")}">${elapsed}</span>
+      <button type="button" class="btn btn-ghost" data-stop-recording="1">停止</button>
+    </div>
+  `;
+}
+
+function formatElapsed(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  const hh = String(Math.floor(s / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+function bindRecordingUi(caseId, activeRecording) {
+  app.querySelectorAll("[data-start-recording]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const sourceId = btn.getAttribute("data-start-recording");
+      try {
+        const data = await fetchJson(`/api/v1/or/cases/${encodeURIComponent(caseId)}/recordings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceId, operator: "or-desk-ui" }),
+        });
+        const rec = data.recording || {};
+        showToast(`开始录制：${rec.sourceName || sourceId}`, "ok");
+        paintWorkspace(caseId, data.workspace);
+      } catch (err) {
+        if (err.status === 409) {
+          showToast("已有录制进行中，请先停止", "warn");
+          return;
+        }
+        showToast(err.message || "开始录制失败", "error");
+      }
+    });
+  });
+
+  app.querySelectorAll("[data-stop-recording]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const sessionId = activeRecording && activeRecording.sessionId;
+      if (!sessionId) {
+        showToast("没有进行中的录制", "warn");
+        return;
+      }
+      try {
+        const data = await fetchJson(
+          `/api/v1/or/cases/${encodeURIComponent(caseId)}/recordings/${encodeURIComponent(sessionId)}/stop`,
+          { method: "POST" }
+        );
+        const rec = data.recording || {};
+        showToast(
+          rec.status === "STOPPED"
+            ? `已停止录制${rec.artifactUri ? " · 已保存" : ""}`
+            : `录制结束：${rec.status || ""}`,
+          rec.status === "STOPPED" ? "ok" : "warn"
+        );
+        paintWorkspace(caseId, data.workspace);
+      } catch (err) {
+        showToast(err.message || "停止录制失败", "error");
+      }
+    });
+  });
+
+  const timer = app.querySelector(".rec-timer");
+  if (timer && activeRecording && activeRecording.startedAt) {
+    const startedMs = Date.parse(activeRecording.startedAt);
+    const tick = () => {
+      if (!timer.isConnected) {
+        clearInterval(bindRecordingUi._timer);
+        return;
+      }
+      const sec = Math.floor((Date.now() - startedMs) / 1000);
+      timer.textContent = formatElapsed(sec);
+    };
+    clearInterval(bindRecordingUi._timer);
+    bindRecordingUi._timer = setInterval(tick, 1000);
+  }
 }
 
 function destCard(d) {

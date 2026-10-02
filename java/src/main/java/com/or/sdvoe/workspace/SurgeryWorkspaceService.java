@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/** 组装患者手术工作空间：病例 + 源 + 目的地（带设备实时状态、活动路由与拼屏）。 */
+/** 组装患者手术工作空间：病例 + 源 + 目的地 + 路由/拼屏/录制。 */
 public class SurgeryWorkspaceService {
 
     private final OperatingRoom operatingRoom;
@@ -27,18 +27,21 @@ public class SurgeryWorkspaceService {
     private final SdvoeDeviceInventoryService deviceInventoryService;
     private final WorkspaceRoutingService routingService;
     private final MosaicService mosaicService;
+    private final RecordingService recordingService;
 
     public SurgeryWorkspaceService(
             OperatingRoom operatingRoom,
             ScheduleService scheduleService,
             SdvoeDeviceInventoryService deviceInventoryService,
             WorkspaceRoutingService routingService,
-            MosaicService mosaicService) {
+            MosaicService mosaicService,
+            RecordingService recordingService) {
         this.operatingRoom = Objects.requireNonNull(operatingRoom);
         this.scheduleService = Objects.requireNonNull(scheduleService);
         this.deviceInventoryService = Objects.requireNonNull(deviceInventoryService);
         this.routingService = Objects.requireNonNull(routingService);
         this.mosaicService = Objects.requireNonNull(mosaicService);
+        this.recordingService = Objects.requireNonNull(recordingService);
     }
 
     public SurgeryWorkspace getWorkspace(String caseId) {
@@ -48,6 +51,8 @@ public class SurgeryWorkspaceService {
         for (SdvoeDevice d : inventory.getDevices()) {
             byId.put(d.getId(), d);
         }
+
+        ActiveRecording activeRecording = recordingService.getActive(caseId);
 
         ScheduleRepository repo = scheduleService.repository();
         List<WorkspaceSource> sources = new ArrayList<>();
@@ -125,6 +130,7 @@ public class SurgeryWorkspaceService {
                 destinations,
                 activeRouteMaps,
                 activeMosaicMaps,
-                layoutMaps);
+                layoutMaps,
+                activeRecording == null ? null : activeRecording.toMap());
     }
 }

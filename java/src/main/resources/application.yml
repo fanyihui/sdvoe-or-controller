@@ -13,6 +13,8 @@ or-desk:
   config-resource: or-controller.yaml
   schedule-resource: schedule.yaml
   policy-resource: routing-policies.yaml
+  recording-output-dir: ${OR_DESK_RECORDING_DIR:data/recordings}
+  recording-worker-id: software-recorder-stub
 
 logging:
   level:

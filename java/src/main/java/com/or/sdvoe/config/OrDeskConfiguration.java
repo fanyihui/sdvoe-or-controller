@@ -1,7 +1,10 @@
 package com.or.sdvoe.config;
 
+import com.or.sdvoe.adapter.RecorderControlPort;
+import com.or.sdvoe.adapter.SoftwareRecorderAdapter;
 import com.or.sdvoe.discovery.SdvoeDiscoveryFactory;
 import com.or.sdvoe.persistence.MosaicRepository;
+import com.or.sdvoe.persistence.RecordingRepository;
 import com.or.sdvoe.persistence.RouteRepository;
 import com.or.sdvoe.policy.PolicyEngine;
 import com.or.sdvoe.schedule.ScheduleRepository;
@@ -9,6 +12,7 @@ import com.or.sdvoe.schedule.ScheduleService;
 import com.or.sdvoe.service.FabricOrchestrator;
 import com.or.sdvoe.service.SdvoeDeviceInventoryService;
 import com.or.sdvoe.workspace.MosaicService;
+import com.or.sdvoe.workspace.RecordingService;
 import com.or.sdvoe.workspace.SurgeryWorkspaceService;
 import com.or.sdvoe.workspace.WorkspaceRoutingService;
 import org.slf4j.Logger;
@@ -55,6 +59,17 @@ public class OrDeskConfiguration {
     @Bean(destroyMethod = "close")
     public MosaicRepository mosaicRepository(DatabaseSettings databaseSettings) {
         return new MosaicRepository(databaseSettings);
+    }
+
+    @Bean(destroyMethod = "close")
+    public RecordingRepository recordingRepository(DatabaseSettings databaseSettings) {
+        return new RecordingRepository(databaseSettings);
+    }
+
+    @Bean
+    public RecorderControlPort recorderControlPort(OrDeskProperties props) {
+        return new SoftwareRecorderAdapter(
+                props.getRecordingWorkerId(), Path.of(props.getRecordingOutputDir()));
     }
 
     @Bean
@@ -140,18 +155,35 @@ public class OrDeskConfiguration {
     }
 
     @Bean
+    public RecordingService recordingService(
+            OrControllerConfig config,
+            ScheduleService scheduleService,
+            SdvoeDeviceInventoryService deviceInventoryService,
+            RecorderControlPort recorderControlPort,
+            RecordingRepository recordingRepository) {
+        return new RecordingService(
+                config.getOperatingRoom().getId(),
+                scheduleService,
+                deviceInventoryService,
+                recorderControlPort,
+                recordingRepository);
+    }
+
+    @Bean
     public SurgeryWorkspaceService surgeryWorkspaceService(
             OrControllerConfig config,
             ScheduleService scheduleService,
             SdvoeDeviceInventoryService deviceInventoryService,
             WorkspaceRoutingService workspaceRoutingService,
-            MosaicService mosaicService) {
+            MosaicService mosaicService,
+            RecordingService recordingService) {
         return new SurgeryWorkspaceService(
                 config.getOperatingRoom(),
                 scheduleService,
                 deviceInventoryService,
                 workspaceRoutingService,
-                mosaicService);
+                mosaicService,
+                recordingService);
     }
 
     @Bean
@@ -159,6 +191,7 @@ public class OrDeskConfiguration {
             DatabaseSettings databaseSettings,
             WorkspaceRoutingService workspaceRoutingService,
             MosaicService mosaicService,
+            RecordingService recordingService,
             RouteRepository routeRepository,
             OrControllerConfig config) {
         return args -> {
@@ -168,8 +201,9 @@ public class OrDeskConfiguration {
             }
             int[] stats = workspaceRoutingService.restorePersistedRoutes();
             int[] mosaicStats = mosaicService.restorePersistedMosaics();
+            int[] recordingStats = recordingService.restorePersistedRecordings();
             log.info(
-                    "OR Desk Spring Boot ready | OR={} store={} remote={} backupDir={} restoredOk={} restoredFailed={} persisted={} mosaicOk={} mosaicFailed={}",
+                    "OR Desk Spring Boot ready | OR={} store={} remote={} backupDir={} restoredOk={} restoredFailed={} persisted={} mosaicOk={} mosaicFailed={} recordingOk={} recordingFailed={}",
                     config.getOperatingRoom().getId(),
                     routeRepository.storageLabel(),
                     databaseSettings.isRemoteServer(),
@@ -178,7 +212,9 @@ public class OrDeskConfiguration {
                     stats[1],
                     routeRepository.countByOr(config.getOperatingRoom().getId()),
                     mosaicStats[0],
-                    mosaicStats[1]);
+                    mosaicStats[1],
+                    recordingStats[0],
+                    recordingStats[1]);
         };
     }
 }

@@ -15,6 +15,7 @@ public final class SurgeryWorkspace {
     private final List<Map<String, Object>> activeRoutes;
     private final List<Map<String, Object>> activeMosaics;
     private final List<Map<String, Object>> mosaicLayouts;
+    private final Map<String, Object> activeRecording;
     private final Instant generatedAt;
 
     public SurgeryWorkspace(
@@ -22,7 +23,7 @@ public final class SurgeryWorkspace {
             OperatingRoom operatingRoom,
             List<WorkspaceSource> sources,
             List<WorkspaceDestination> destinations) {
-        this(surgeryCase, operatingRoom, sources, destinations, List.of(), List.of(), List.of());
+        this(surgeryCase, operatingRoom, sources, destinations, List.of(), List.of(), List.of(), null);
     }
 
     public SurgeryWorkspace(
@@ -31,7 +32,7 @@ public final class SurgeryWorkspace {
             List<WorkspaceSource> sources,
             List<WorkspaceDestination> destinations,
             List<Map<String, Object>> activeRoutes) {
-        this(surgeryCase, operatingRoom, sources, destinations, activeRoutes, List.of(), List.of());
+        this(surgeryCase, operatingRoom, sources, destinations, activeRoutes, List.of(), List.of(), null);
     }
 
     public SurgeryWorkspace(
@@ -42,6 +43,18 @@ public final class SurgeryWorkspace {
             List<Map<String, Object>> activeRoutes,
             List<Map<String, Object>> activeMosaics,
             List<Map<String, Object>> mosaicLayouts) {
+        this(surgeryCase, operatingRoom, sources, destinations, activeRoutes, activeMosaics, mosaicLayouts, null);
+    }
+
+    public SurgeryWorkspace(
+            SurgeryCase surgeryCase,
+            OperatingRoom operatingRoom,
+            List<WorkspaceSource> sources,
+            List<WorkspaceDestination> destinations,
+            List<Map<String, Object>> activeRoutes,
+            List<Map<String, Object>> activeMosaics,
+            List<Map<String, Object>> mosaicLayouts,
+            Map<String, Object> activeRecording) {
         this.surgeryCase = surgeryCase;
         this.operatingRoom = operatingRoom;
         this.sources = List.copyOf(sources);
@@ -49,6 +62,7 @@ public final class SurgeryWorkspace {
         this.activeRoutes = List.copyOf(activeRoutes);
         this.activeMosaics = List.copyOf(activeMosaics);
         this.mosaicLayouts = List.copyOf(mosaicLayouts);
+        this.activeRecording = activeRecording;
         this.generatedAt = Instant.now();
     }
 
@@ -75,8 +89,12 @@ public final class SurgeryWorkspace {
         m.put("case", surgeryCase.toDetailMap());
         m.put("patient", surgeryCase.getPatient().toMap());
         List<Map<String, Object>> srcMaps = new ArrayList<>();
+        String recordingSourceId = activeRecording == null ? null : String.valueOf(activeRecording.get("sourceId"));
+        boolean recordingBusy = activeRecording != null
+                && Boolean.TRUE.equals(activeRecording.get("active"));
         for (WorkspaceSource s : sources) {
-            srcMaps.add(s.toMap());
+            boolean isRec = recordingSourceId != null && recordingSourceId.equals(s.getId());
+            srcMaps.add(s.toMap(isRec, recordingBusy && !isRec));
         }
         List<Map<String, Object>> dstMaps = new ArrayList<>();
         for (WorkspaceDestination d : destinations) {
@@ -87,6 +105,7 @@ public final class SurgeryWorkspace {
         m.put("activeRoutes", activeRoutes);
         m.put("activeMosaics", activeMosaics);
         m.put("mosaicLayouts", mosaicLayouts);
+        m.put("activeRecording", activeRecording);
         m.put("generatedAt", generatedAt.toString());
         return m;
     }

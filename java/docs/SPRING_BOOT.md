@@ -37,6 +37,7 @@ java -jar target/sdvoe-or-controller-0.1.0-SNAPSHOT.jar
 - `GET /api/v1/or/cases/{id}/workspace`
 - `POST /api/v1/or/cases/{id}/routes`
 - `GET /api/v1/or/mosaic/layouts` · `.../cases/{id}/mosaics` · push/cells
+- `POST /api/v1/or/cases/{id}/recordings` · `.../recordings/{sessionId}/stop`
 - `GET /api/v1/or/routes` / `export` / `backup` / `import`
 
-详见 [MOSAIC.md](./MOSAIC.md)。
+详见 [MOSAIC.md](./MOSAIC.md)、[RECORDING_DESIGN.md](../../docs/RECORDING_DESIGN.md)。
